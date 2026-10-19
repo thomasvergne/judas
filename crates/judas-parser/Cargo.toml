@@ -1,0 +1,9 @@
+[package]
+name = "judas-parser"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+judas-ast = { workspace = true }
+miette = { workspace = true }
+thiserror = { workspace = true }
