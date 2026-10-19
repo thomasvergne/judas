@@ -1,0 +1,7 @@
+module Adder(N: usize) {
+    input a: UInt<N>
+    input b: UInt<N>
+    output sum: UInt<N + 1>
+
+    sum = extend(a) + extend(b)
+}

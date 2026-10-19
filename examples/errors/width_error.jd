@@ -1,0 +1,6 @@
+module WidthDemo {
+    input a: UInt<8>
+    output b: UInt<9>
+
+    b = a
+}

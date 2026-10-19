@@ -1,0 +1,387 @@
+// Mini 8b/16b CPU
+//
+// Architecture :
+// - 16 bits wide instruction : [15:12 Opcode] [11:10 Dst] [9:8 Src] [7:0 Imm]
+// - Data width : 8 bits
+// - 4 General Purpose Registers : R0, R1, R2, R3
+// - Program Counter (PC) : 8 bits
+// - Flags : Zero Flag (Z)
+// - State Machine : Fetch -> Decode -> Execute -> Halt
+
+enum State {
+    Fetch = 0,
+    Decode = 1,
+    Execute = 2,
+    Halted = 3,
+}
+
+enum Opcode {
+    Nop  = 0b0000,
+    Ldi  = 0b0001, // R[dst] = Imm
+    Mov  = 0b0010, // R[dst] = R[src]
+    Add  = 0b0011, // R[dst] = R[dst] + R[src]
+    Sub  = 0b0100, // R[dst] = R[dst] - R[src]
+    And  = 0b0101, // R[dst] = R[dst] & R[src]
+    Or   = 0b0110, // R[dst] = R[dst] | R[src]
+    Xor  = 0b0111, // R[dst] = R[dst] ^ R[src]
+    Out  = 0b1000, // IO_Out = R[dst]
+    Jmp  = 0b1001, // PC = Imm
+    Jz   = 0b1010, // If Z == 1 then PC = Imm else PC = PC + 1
+    Jnz  = 0b1011, // If Z == 0 then PC = Imm else PC = PC + 1
+    Halt = 0b1111, // Halt the processor
+}
+
+// Instruction structure (16 bits)
+struct Instruction {
+    opcode: UInt<4>,
+    dst: UInt<2>,
+    src: UInt<2>,
+    imm: UInt<8>,
+}
+
+// Instruction bus interface (CPU = Master, ROM = Slave)
+interface InstructionBus {
+    out pc: UInt<8>,
+    in instruction: UInt<16>,
+}
+
+// ROM Program Memory
+//
+// Computing sum from 1 to N (N = 5 in this example):
+// 0: LDI R0, 0        -> R0 = 0 (Sum accumulator)
+// 1: LDI R1, 5        -> R1 = 5 (Decreasing counter N)
+// 2: LDI R2, 1        -> R2 = 1 (Decrement step)
+// 3: ADD R0, R1       -> Loop: R0 = R0 + R1
+// 4: SUB R1, R2       -> R1 = R1 - 1
+// 5: OUT R0           -> Print partial sum
+// 6: JNZ 3            -> Loop condition: jump to 3 if R1 != 0
+// 7: HALT             -> End of program
+module ProgramRom {
+    input clk: Clock
+    slave bus: InstructionBus
+
+    on rising(clk) {
+        match bus.pc {
+            0 => bus.instruction = 0x1000, // LDI R0, 0
+            1 => bus.instruction = 0x1405, // LDI R1, 5  (dst=1 => bits 11:10 = 01 => 0x1405)
+            2 => bus.instruction = 0x1801, // LDI R2, 1  (dst=2 => bits 11:10 = 10 => 0x1801)
+            3 => bus.instruction = 0x3100, // ADD R0, R1 (dst=0, src=1)
+            4 => bus.instruction = 0x4600, // SUB R1, R2 (dst=1, src=2)
+            5 => bus.instruction = 0x8000, // OUT R0
+            6 => bus.instruction = 0xB003, // JNZ 3
+            7 => bus.instruction = 0xF000, // HALT
+            _ => bus.instruction = 0x0000, // NOP
+        }
+    }
+}
+
+module CpuCore {
+    input clk: Clock
+    input rst: Bool
+
+    master bus: InstructionBus
+
+    output io_data: UInt<8>
+    output pc_out: UInt<8>
+    output is_halted: Bool
+
+    // State registers
+    register state: State = Fetch
+    register pc: UInt<8> = 0
+    register zero_flag: Bool = false
+    register halted: Bool = false
+    register out_reg: UInt<8> = 0
+
+    // General purpose registers R0, R1, R2, R3
+    register r0: UInt<8> = 0
+    register r1: UInt<8> = 0
+    register r2: UInt<8> = 0
+    register r3: UInt<8> = 0
+
+    // Instruction register
+    register ir: UInt<16> = 0
+
+    // Continuous bus bindings
+    bus.pc = pc
+    pc_out = pc
+    io_data = out_reg
+    is_halted = halted
+
+    // Static/simulation invariants
+    assert pc <= 64, "PC out of bounds invariant"
+
+    on rising(clk) {
+        if rst {
+            state = Fetch
+            pc = 0
+            zero_flag = false
+            halted = false
+            out_reg = 0
+            r0 = 0
+            r1 = 0
+            r2 = 0
+            r3 = 0
+            ir = 0
+        } else {
+            match state {
+                Fetch => {
+                    // Fetch instruction from ROM
+                    ir = bus.instruction
+                    state = Decode
+                }
+
+                Decode => {
+                    // Decode instruction
+                    state = Execute
+                }
+
+                Execute => {
+                    // Execute instruction
+                    let inst = Instruction {
+                        opcode: ir.slice<4>(12),
+                        dst: ir.slice<2>(10),
+                        src: ir.slice<2>(8),
+                        imm: ir.slice<8>(0),
+                    }
+
+                    // Read source operand according to inst.src
+                    let src_val: UInt<8> = 0
+                    match inst.src {
+                        0 => src_val = r0,
+                        1 => src_val = r1,
+                        2 => src_val = r2,
+                        3 => src_val = r3,
+                    }
+
+                    // Execute instruction according to opcode
+                    match inst.opcode {
+                        0 => {
+                            // NOP
+                            pc = pc + 1
+                            state = Fetch
+                        }
+
+                        1 => {
+                            // LDI R[dst] = Imm
+                            match inst.dst {
+                                0 => r0 = inst.imm,
+                                1 => r1 = inst.imm,
+                                2 => r2 = inst.imm,
+                                3 => r3 = inst.imm,
+                            }
+                            zero_flag = inst.imm == 0
+                            pc = pc + 1
+                            state = Fetch
+                        }
+
+                        2 => {
+                            // MOV R[dst] = R[src]
+                            match inst.dst {
+                                0 => r0 = src_val,
+                                1 => r1 = src_val,
+                                2 => r2 = src_val,
+                                3 => r3 = src_val,
+                            }
+                            zero_flag = src_val == 0
+                            pc = pc + 1
+                            state = Fetch
+                        }
+
+                        3 => {
+                            // ADD R[dst] = R[dst] + R[src]
+                            match inst.dst {
+                                0 => {
+                                    r0 = r0 + src_val
+                                    zero_flag = (r0 + src_val) == 0
+                                }
+                                1 => {
+                                    r1 = r1 + src_val
+                                    zero_flag = (r1 + src_val) == 0
+                                }
+                                2 => {
+                                    r2 = r2 + src_val
+                                    zero_flag = (r2 + src_val) == 0
+                                }
+                                3 => {
+                                    r3 = r3 + src_val
+                                    zero_flag = (r3 + src_val) == 0
+                                }
+                            }
+                            pc = pc + 1
+                            state = Fetch
+                        }
+
+                        4 => {
+                            // SUB R[dst] = R[dst] - R[src]
+                            match inst.dst {
+                                0 => {
+                                    r0 = r0 - src_val
+                                    zero_flag = (r0 - src_val) == 0
+                                }
+                                1 => {
+                                    r1 = r1 - src_val
+                                    zero_flag = (r1 - src_val) == 0
+                                }
+                                2 => {
+                                    r2 = r2 - src_val
+                                    zero_flag = (r2 - src_val) == 0
+                                }
+                                3 => {
+                                    r3 = r3 - src_val
+                                    zero_flag = (r3 - src_val) == 0
+                                }
+                            }
+                            pc = pc + 1
+                            state = Fetch
+                        }
+
+                        5 => {
+                            // AND R[dst] = R[dst] & R[src]
+                            match inst.dst {
+                                0 => {
+                                    r0 = r0 & src_val
+                                    zero_flag = (r0 & src_val) == 0
+                                }
+                                1 => {
+                                    r1 = r1 & src_val
+                                    zero_flag = (r1 & src_val) == 0
+                                }
+                                2 => {
+                                    r2 = r2 & src_val
+                                    zero_flag = (r2 & src_val) == 0
+                                }
+                                3 => {
+                                    r3 = r3 & src_val
+                                    zero_flag = (r3 & src_val) == 0
+                                }
+                            }
+                            pc = pc + 1
+                            state = Fetch
+                        }
+
+                        6 => {
+                            // OR R[dst] = R[dst] | R[src]
+                            match inst.dst {
+                                0 => {
+                                    r0 = r0 | src_val
+                                    zero_flag = (r0 | src_val) == 0
+                                }
+                                1 => {
+                                    r1 = r1 | src_val
+                                    zero_flag = (r1 | src_val) == 0
+                                }
+                                2 => {
+                                    r2 = r2 | src_val
+                                    zero_flag = (r2 | src_val) == 0
+                                }
+                                3 => {
+                                    r3 = r3 | src_val
+                                    zero_flag = (r3 | src_val) == 0
+                                }
+                            }
+                            pc = pc + 1
+                            state = Fetch
+                        }
+
+                        7 => {
+                            // XOR R[dst] = R[dst] ^ R[src]
+                            match inst.dst {
+                                0 => {
+                                    r0 = r0 ^ src_val
+                                    zero_flag = (r0 ^ src_val) == 0
+                                }
+                                1 => {
+                                    r1 = r1 ^ src_val
+                                    zero_flag = (r1 ^ src_val) == 0
+                                }
+                                2 => {
+                                    r2 = r2 ^ src_val
+                                    zero_flag = (r2 ^ src_val) == 0
+                                }
+                                3 => {
+                                    r3 = r3 ^ src_val
+                                    zero_flag = (r3 ^ src_val) == 0
+                                }
+                            }
+                            pc = pc + 1
+                            state = Fetch
+                        }
+
+                        8 => {
+                            // OUT R[dst]
+                            match inst.dst {
+                                0 => out_reg = r0,
+                                1 => out_reg = r1,
+                                2 => out_reg = r2,
+                                3 => out_reg = r3,
+                            }
+                            pc = pc + 1
+                            state = Fetch
+                        }
+
+                        9 => {
+                            // JMP Imm
+                            pc = inst.imm
+                            state = Fetch
+                        }
+
+                        10 => {
+                            // JZ Imm (Jump if Zero)
+                            if zero_flag {
+                                pc = inst.imm
+                            } else {
+                                pc = pc + 1
+                            }
+                            state = Fetch
+                        }
+
+                        11 => {
+                            // JNZ Imm (Jump if Not Zero)
+                            if !zero_flag {
+                                pc = inst.imm
+                            } else {
+                                pc = pc + 1
+                            }
+                            state = Fetch
+                        }
+
+                        15 => {
+                            // HALT
+                            halted = true
+                            state = Halted
+                        }
+
+                        _ => {
+                            // Unknown opcode -> NOP
+                            pc = pc + 1
+                            state = Fetch
+                        }
+                    }
+                }
+
+                Halted => {
+                    halted = true
+                }
+            }
+        }
+    }
+}
+
+module MiniCpuSystem {
+    input clk: Clock
+    input rst: Bool
+
+    output out_data: UInt<8>
+    output pc: UInt<8>
+    output is_halted: Bool
+
+    let cpu = CpuCore(clk: clk, rst: rst)
+    let rom = ProgramRom(clk: clk)
+
+    // Connect instruction bus between CPU and ROM
+    connect rom.bus = cpu.bus
+
+    out_data = cpu.io_data
+    pc = cpu.pc_out
+    is_halted = cpu.is_halted
+}

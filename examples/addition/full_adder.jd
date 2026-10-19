@@ -1,0 +1,11 @@
+module FullAdder {
+    input a: Bit
+    input b: Bit
+    input cin: Bit
+
+    output sum: Bit
+    output cout: Bit
+
+    sum = a ^ b ^ cin
+    cout = (a & b) | (cin & (a ^ b))
+}

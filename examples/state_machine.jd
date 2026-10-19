@@ -1,0 +1,22 @@
+enum state {
+    red = 0b00,
+    yellow = 0b01,
+    green = 0b10,
+}
+
+module TrafficController {
+    input clk: Clock
+    output current: state
+
+    register state_reg: state = red
+
+    on rising(clk) {
+        match state_reg {
+            red => state_reg = yellow
+            yellow => state_reg = green
+            green => state_reg = red
+        }
+    }
+
+    current = state_reg
+}

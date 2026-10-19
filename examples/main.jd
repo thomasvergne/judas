@@ -1,0 +1,12 @@
+module Top {
+    input clk: Clock
+    input reset: Bool
+
+    let counter = Counter(width: 16)
+
+    connect counter.clk = clk
+    connect counter.reset = reset
+    connect counter.enable = true
+
+    output count: UInt<16> = counter.count
+}

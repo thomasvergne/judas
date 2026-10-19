@@ -1,0 +1,13 @@
+module FullAdder {
+    input a: UInt<1>
+    input b: UInt<1>
+    input cin: UInt<1>
+
+    output sum: UInt<1>
+    output cout: UInt<1>
+
+    let full_sum: UInt<2> = extend(a) + extend(b) + extend(cin)
+
+    sum = truncate<1>(full_sum)
+    cout = truncate<1>(full_sum >> 1)
+}

@@ -1,0 +1,32 @@
+module Counter(width: usize = 8) {
+    input clk: Clock
+    input reset: Bool
+    input enable: Bool
+
+    output count: UInt<width>
+
+    register count_reg: UInt<width> = 0
+
+    count = count_reg
+
+    on rising(clk) {
+        if reset {
+            count_reg = 0
+        } else if enable {
+            count_reg = count_reg + 1
+        }
+    }
+}
+
+module Top {
+    input clk: Clock
+    input reset: Bool
+
+    let counter = Counter(width: 16)
+
+    connect counter.clk = clk
+    connect counter.reset = reset
+    connect counter.enable = true
+
+    output count: UInt<16> = counter.count
+}

@@ -1,0 +1,7 @@
+module TypoDemo {
+    input clk: Clock
+    input reset: Bool
+
+    on rising(clkk) {
+    }
+}

@@ -1,0 +1,13 @@
+module CarryAdder(N: usize) {
+    input a: UInt<N>
+    input b: UInt<N>
+    input cin: Bit
+
+    output sum: UInt<N>
+    output cout: Bit
+
+    let total: UInt<N + 1> = extend(a) + extend(b) + extend<N + 1>(cin)
+
+    sum = truncate<N>(total)
+    cout = truncate<1>(total >> N)
+}
