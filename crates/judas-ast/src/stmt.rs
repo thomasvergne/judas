@@ -57,6 +57,15 @@ pub enum EdgeKind {
     Falling,
 }
 
+impl std::fmt::Display for EdgeKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Rising => write!(f, "rising"),
+            Self::Falling => write!(f, "falling"),
+        }
+    }
+}
+
 /// Represents a `Trigger` that synchronizes with the clock.
 /// `edge` represents the kind of edge to detect, `signal`
 /// represents the signal to detect changes on, and `span`
