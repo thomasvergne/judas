@@ -182,13 +182,17 @@ pub struct ModuleParam {
 /// Represents a module declaration.
 ///
 /// A `ModuleDecl` is a module declaration that contains the name,
-/// generic parameters, parameters, items, and span of the module.
+/// generic parameters, parameters, items, whether it is an external
+/// module (e.g. Verilog FFI), optional foreign file path, and span
+/// of the module.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModuleDecl {
     pub name: Ident,
     pub generics: Vec<GenericParam>,
     pub params: Vec<ModuleParam>,
     pub items: Vec<ModuleItem>,
+    pub is_extern: bool,
+    pub foreign_path: Option<String>,
     pub span: Span,
 }
 
