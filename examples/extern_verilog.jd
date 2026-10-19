@@ -1,0 +1,34 @@
+extern "primitives/xilinx/DSP48E1.v" module DSP48E1 {
+    input clk: Clock,
+    input a: Bits<25>,
+    input b: Bits<18>,
+    output p: Bits<48>,
+}
+
+extern "ip/async_fifo.v" module AsyncFifo<data_width: usize = 32, depth: usize = 512> {
+    input wr_clk: Clock,
+    input rd_clk: Clock,
+    input rst: Bit,
+    input wr_en: Bit,
+    input wr_data: Bits<data_width>,
+    output full: Bit,
+    input rd_en: Bit,
+    output rd_data: Bits<data_width>,
+    output empty: Bit,
+}
+
+module SignalProcessor {
+    input clk: Clock
+    input sample_in: Bits<25>
+    input coeff: Bits<18>
+    output filtered_out: Bits<48>
+
+    // Instantiate vendor DSP block
+    let dsp = DSP48E1()
+    connect dsp.clk = clk
+    connect dsp.a = sample_in
+    connect dsp.b = coeff
+
+    // Connect DSP output to top module output
+    connect filtered_out = dsp.p
+}

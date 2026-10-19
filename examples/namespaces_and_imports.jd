@@ -1,0 +1,73 @@
+namespace math {
+    pub struct Complex {
+        real: Int<16>,
+        imag: Int<16>,
+    }
+
+    pub module Adder {
+        input a: UInt<16>
+        input b: UInt<16>
+        output sum: UInt<16>
+
+        sum = a + b
+    }
+
+    module SecretInternalHasher {
+        input in_val: UInt<16>
+        output hash: UInt<16>
+
+        hash = in_val ^ 0x5a5a
+    }
+
+    pub module Multiplier {
+        input a: UInt<16>
+        input b: UInt<16>
+        output prod: UInt<32>
+
+        prod = extend<32>(a) * extend<32>(b)
+    }
+}
+
+namespace protocols {
+    pub interface StreamBus {
+        out valid: Bool
+        in ready: Bool
+        out data: UInt<32>
+    }
+}
+
+import math::Adder;
+import math::Adder as FastAdder;
+import math::{Complex, Multiplier};
+import protocols::StreamBus;
+
+module Top {
+    input clk: Clock
+    input a: UInt<16>
+    input b: UInt<16>
+    output sum1: UInt<16>
+    output sum2: UInt<16>
+    output product: UInt<32>
+
+    master tx: StreamBus
+
+    let origin = Complex { real: 0, imag: 0 }
+
+    let adder1 = Adder()
+    connect adder1.a = a
+    connect adder1.b = b
+    connect sum1 = adder1.sum
+
+    let adder2 = FastAdder()
+    connect adder2.a = a
+    connect adder2.b = b
+    connect sum2 = adder2.sum
+
+    let mult = math::Multiplier()
+    connect mult.a = a
+    connect mult.b = b
+    connect product = mult.prod
+
+    connect tx.valid = true
+    connect tx.data = extend<32>(sum1)
+}

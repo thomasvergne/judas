@@ -1,0 +1,24 @@
+import "counter.jd"::Counter;
+
+import "counter.jd" as counter_pkg;
+
+module MultiCounterTop {
+    input clk: Clock
+    input reset: Bool
+    input enable: Bool
+
+    output c1_val: UInt<16>
+    output c2_val: UInt<32>
+
+    let c1 = Counter(width: 16)
+    connect c1.clk = clk
+    connect c1.reset = reset
+    connect c1.enable = enable
+    connect c1_val = c1.count
+
+    let c2 = counter_pkg::Counter(width: 32)
+    connect c2.clk = clk
+    connect c2.reset = reset
+    connect c2.enable = enable
+    connect c2_val = c2.count
+}
