@@ -52,6 +52,9 @@ pub struct InferContext {
     pub(crate) struct_definitions: HashMap<String, StructSignature>,
     pub(crate) interface_definitions: HashMap<String, InterfaceSignature>,
     pub(crate) module_definitions: HashMap<String, ModuleSignature>,
+    pub(crate) aliases: HashMap<String, String>,
+    pub(crate) visibilities: HashMap<String, judas_ast::path::Visibility>,
+    pub(crate) current_namespace: Option<String>,
 
     // Current module scope
     pub(crate) current_constants: HashMap<String, i64>,
@@ -75,6 +78,9 @@ impl InferContext {
             struct_definitions: HashMap::new(),
             interface_definitions: HashMap::new(),
             module_definitions: HashMap::new(),
+            aliases: HashMap::new(),
+            visibilities: HashMap::new(),
+            current_namespace: None,
             current_constants: HashMap::new(),
             current_signals: HashMap::new(),
             current_instances: HashMap::new(),
@@ -144,34 +150,58 @@ impl InferContext {
                     size: sz,
                 })
             }
-            TypeKind::Named { name, args } => {
-                if self.enums.contains_key(&name.name) {
+            TypeKind::Named { path, args } => {
+                let raw_name = path.to_string_path();
+                let resolved_name = self.resolve_symbol_name(&raw_name);
+
+                if self.enums.contains_key(&resolved_name) {
                     if !args.is_empty() {
                         return Err(TypeError::new(
-                            format!("Enum `{}` does not take generic arguments", name.name),
+                            format!("Enum `{}` does not take generic arguments", path),
                             ty.span,
                         ));
                     }
-                    Ok(ResolvedType::Enum(name.name.clone()))
-                } else if let Some(sig) = self.struct_definitions.get(&name.name) {
+                    Ok(ResolvedType::Enum(resolved_name))
+                } else if let Some(sig) = self.struct_definitions.get(&resolved_name) {
                     if !args.is_empty() {
                         return Err(TypeError::new(
-                            format!("Struct `{}` does not take generic arguments", name.name),
+                            format!("Struct `{}` does not take generic arguments", path),
                             ty.span,
                         ));
                     }
                     Ok(ResolvedType::Struct {
-                        name: name.name.clone(),
+                        name: resolved_name,
                         fields: sig.fields.clone(),
                         total_width: sig.total_width.clone(),
                     })
-                } else if name.name == "usize" || name.name == "int" {
+                } else if resolved_name == "usize" || resolved_name == "int" {
                     Ok(ResolvedType::uint(32))
                 } else {
                     // Could be a generic type parameter (like T)
-                    Ok(ResolvedType::Enum(name.name.clone()))
+                    Ok(ResolvedType::Enum(resolved_name))
                 }
             }
+        }
+    }
+
+    /// Resolves an identifier or path alias to its canonical symbol name.
+    pub fn resolve_symbol_name(&self, name_or_path: &str) -> String {
+        if let Some(target) = self.aliases.get(name_or_path) {
+            target.clone()
+        } else if let Some(ns) = &self.current_namespace {
+            let namespaced = format!("{}::{}", ns, name_or_path);
+            if self.struct_definitions.contains_key(&namespaced)
+                || self.module_definitions.contains_key(&namespaced)
+                || self.enums.contains_key(&namespaced)
+                || self.interface_definitions.contains_key(&namespaced)
+                || self.variant_to_enum.contains_key(&namespaced)
+            {
+                namespaced
+            } else {
+                name_or_path.to_string()
+            }
+        } else {
+            name_or_path.to_string()
         }
     }
 
@@ -184,11 +214,12 @@ impl InferContext {
         match arg {
             TypeArg::Expr(expr) => self.resolve_width_expr(expr),
             TypeArg::Type(ty) => match &ty.kind {
-                TypeKind::Named { name, .. } => {
-                    if let Some(val) = self.current_constants.get(&name.name) {
+                TypeKind::Named { path, .. } => {
+                    let name_str = self.resolve_symbol_name(&path.to_string_path());
+                    if let Some(val) = self.current_constants.get(&name_str) {
                         Ok(WidthExpr::Const(*val as u32))
                     } else {
-                        Ok(WidthExpr::Var(name.name.clone()))
+                        Ok(WidthExpr::Var(name_str))
                     }
                 }
                 _ => Err(TypeError::new("Expected valid width expression", span)),

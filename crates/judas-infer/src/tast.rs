@@ -34,6 +34,7 @@ pub struct TypedCallArg {
 pub enum TypedExprKind {
     Literal(Literal),
     Ident(Ident),
+    Path(Path),
     FieldAccess {
         base: Box<TypedExpr>,
         field: Ident,
@@ -56,7 +57,7 @@ pub enum TypedExprKind {
         index: Box<TypedExpr>,
     },
     StructInit {
-        name: Ident,
+        path: Path,
         fields: Vec<TypedFieldInit>,
     },
 }
@@ -271,7 +272,7 @@ pub struct TypedAssertDecl {
 pub struct TypedInterfacePortDecl {
     pub role: InterfaceRole,
     pub name: Ident,
-    pub interface_name: Ident,
+    pub interface_name: Path,
     pub span: Span,
 }
 
@@ -361,6 +362,14 @@ pub struct TypedInterfaceDecl {
     pub span: Span,
 }
 
+/// Represents a typed namespace declaration.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TypedNamespaceDecl {
+    pub name: Ident,
+    pub items: Vec<TypedItem>,
+    pub span: Span,
+}
+
 /// Represents a typed item kind.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TypedItemKind {
@@ -368,6 +377,8 @@ pub enum TypedItemKind {
     Enum(TypedEnumDecl),
     Struct(TypedStructDecl),
     Interface(TypedInterfaceDecl),
+    Namespace(TypedNamespaceDecl),
+    Import(ImportDecl),
 }
 
 /// Represents a typed item.

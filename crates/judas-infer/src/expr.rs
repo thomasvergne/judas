@@ -33,19 +33,32 @@ pub(crate) fn infer_expr(ctx: &mut InferContext, expr: &Expr) -> Result<TypedExp
         }
 
         ExprKind::Ident(ident) => {
-            if let Some(ty) = ctx.current_signals.get(&ident.name) {
+            let resolved_name = ctx.resolve_symbol_name(&ident.name);
+            if let Some(ty) = ctx
+                .current_signals
+                .get(&ident.name)
+                .or_else(|| ctx.current_signals.get(&resolved_name))
+            {
                 Ok(TypedExpr::new(
                     TypedExprKind::Ident(ident.clone()),
                     ty.clone(),
                     expr.span,
                 ))
-            } else if let Some(enum_name) = ctx.variant_to_enum.get(&ident.name) {
+            } else if let Some(enum_name) = ctx
+                .variant_to_enum
+                .get(&ident.name)
+                .or_else(|| ctx.variant_to_enum.get(&resolved_name))
+            {
                 Ok(TypedExpr::new(
                     TypedExprKind::Ident(ident.clone()),
                     ResolvedType::Enum(enum_name.clone()),
                     expr.span,
                 ))
-            } else if let Some(val) = ctx.current_constants.get(&ident.name) {
+            } else if let Some(val) = ctx
+                .current_constants
+                .get(&ident.name)
+                .or_else(|| ctx.current_constants.get(&resolved_name))
+            {
                 Ok(TypedExpr::new(
                     TypedExprKind::Literal(Literal::Integer(*val as i128)),
                     ResolvedType::uint(32),
@@ -55,6 +68,72 @@ pub(crate) fn infer_expr(ctx: &mut InferContext, expr: &Expr) -> Result<TypedExp
                 Err(TypeError::undefined_variable(
                     &ident.name,
                     ident.span,
+                    &ctx.visible_names(),
+                ))
+            }
+        }
+
+        ExprKind::Path(path) => {
+            let path_str = path.to_string_path();
+            let resolved_name = ctx.resolve_symbol_name(&path_str);
+
+            if let Some(vis) = ctx.visibilities.get(&resolved_name)
+                && *vis == judas_ast::path::Visibility::Private
+                && path.is_qualified()
+            {
+                return Err(TypeError::new(
+                    format!(
+                        "Symbol `{}` is private and cannot be accessed from outside its namespace",
+                        path_str
+                    ),
+                    path.span,
+                ));
+            }
+
+            if let Some(enum_name) = ctx.variant_to_enum.get(&resolved_name) {
+                Ok(TypedExpr::new(
+                    TypedExprKind::Path(path.clone()),
+                    ResolvedType::Enum(enum_name.clone()),
+                    expr.span,
+                ))
+            } else if path.segments.len() >= 2 {
+                let enum_prefix = path.segments[..path.segments.len() - 1]
+                    .iter()
+                    .map(|s| s.name.as_str())
+                    .collect::<Vec<_>>()
+                    .join("::");
+                let resolved_enum = ctx.resolve_symbol_name(&enum_prefix);
+                let variant_name = &path.segments.last().unwrap().name;
+                if let Some(variants) = ctx.enums.get(&resolved_enum)
+                    && variants.contains(variant_name)
+                {
+                    return Ok(TypedExpr::new(
+                        TypedExprKind::Path(path.clone()),
+                        ResolvedType::Enum(resolved_enum),
+                        expr.span,
+                    ));
+                }
+                Err(TypeError::undefined_variable(
+                    &path_str,
+                    path.span,
+                    &ctx.visible_names(),
+                ))
+            } else if let Some(ty) = ctx.current_signals.get(&resolved_name) {
+                Ok(TypedExpr::new(
+                    TypedExprKind::Path(path.clone()),
+                    ty.clone(),
+                    expr.span,
+                ))
+            } else if let Some(val) = ctx.current_constants.get(&resolved_name) {
+                Ok(TypedExpr::new(
+                    TypedExprKind::Literal(Literal::Integer(*val as i128)),
+                    ResolvedType::uint(32),
+                    expr.span,
+                ))
+            } else {
+                Err(TypeError::undefined_variable(
+                    &path_str,
+                    path.span,
                     &ctx.visible_names(),
                 ))
             }
@@ -138,12 +217,28 @@ pub(crate) fn infer_expr(ctx: &mut InferContext, expr: &Expr) -> Result<TypedExp
             }
         }
 
-        ExprKind::StructInit { name, fields } => {
-            let sig = if let Some(s) = ctx.struct_definitions.get(&name.name).cloned() {
+        ExprKind::StructInit { path, fields } => {
+            let path_str = path.to_string_path();
+            let resolved_name = ctx.resolve_symbol_name(&path_str);
+
+            if let Some(vis) = ctx.visibilities.get(&resolved_name)
+                && *vis == judas_ast::path::Visibility::Private
+                && path.is_qualified()
+            {
+                return Err(TypeError::new(
+                    format!(
+                        "Struct `{}` is private and cannot be accessed from outside its namespace",
+                        path_str
+                    ),
+                    path.span,
+                ));
+            }
+
+            let sig = if let Some(s) = ctx.struct_definitions.get(&resolved_name).cloned() {
                 s
             } else {
                 let available: Vec<String> = ctx.struct_definitions.keys().cloned().collect();
-                return Err(TypeError::unknown_struct(&name.name, name.span, &available));
+                return Err(TypeError::unknown_struct(&path_str, path.span, &available));
             };
 
             let mut typed_fields = Vec::new();
@@ -154,7 +249,7 @@ pub(crate) fn infer_expr(ctx: &mut InferContext, expr: &Expr) -> Result<TypedExp
                     return Err(TypeError::new(
                         format!(
                             "Duplicate field `{}` in struct `{}` initialization",
-                            field.name.name, name.name
+                            field.name.name, path_str
                         ),
                         field.span,
                     ));
@@ -175,7 +270,7 @@ pub(crate) fn infer_expr(ctx: &mut InferContext, expr: &Expr) -> Result<TypedExp
                     let available_fields: Vec<String> =
                         sig.fields.iter().map(|(n, _)| n.clone()).collect();
                     return Err(TypeError::unknown_struct_field(
-                        &name.name,
+                        &path_str,
                         &field.name.name,
                         field.span,
                         &available_fields,
@@ -192,19 +287,19 @@ pub(crate) fn infer_expr(ctx: &mut InferContext, expr: &Expr) -> Result<TypedExp
             }
             if !missing.is_empty() {
                 return Err(TypeError::missing_struct_fields(
-                    &name.name, expr.span, &missing,
+                    &path_str, expr.span, &missing,
                 ));
             }
 
             let ret_ty = ResolvedType::Struct {
-                name: name.name.clone(),
+                name: resolved_name,
                 fields: sig.fields.clone(),
                 total_width: sig.total_width.clone(),
             };
 
             Ok(TypedExpr::new(
                 TypedExprKind::StructInit {
-                    name: name.clone(),
+                    path: path.clone(),
                     fields: typed_fields,
                 },
                 ret_ty,
@@ -696,8 +791,33 @@ pub(crate) fn infer_expr(ctx: &mut InferContext, expr: &Expr) -> Result<TypedExp
                         ret_ty,
                         expr.span,
                     ));
-                } else if let Some(sig) = ctx.module_definitions.get(&fn_ident.name).cloned() {
-                    // Component instantiation: Counter(width: 16)
+                }
+            }
+
+            let callee_target = match &callee.kind {
+                ExprKind::Ident(id) => Some((id.name.clone(), id.span)),
+                ExprKind::Path(p) => Some((p.to_string_path(), p.span)),
+                _ => None,
+            };
+
+            if let Some((target_name, callee_span)) = callee_target {
+                let resolved_name = ctx.resolve_symbol_name(&target_name);
+
+                if let Some(vis) = ctx.visibilities.get(&resolved_name)
+                    && *vis == judas_ast::path::Visibility::Private
+                    && (target_name.contains("::") || ctx.aliases.contains_key(&target_name))
+                {
+                    return Err(TypeError::new(
+                        format!(
+                            "Module `{}` is private and cannot be accessed from outside its namespace",
+                            target_name
+                        ),
+                        callee_span,
+                    ));
+                }
+
+                if let Some(sig) = ctx.module_definitions.get(&resolved_name).cloned() {
+                    // Component instantiation: Counter(width: 16) or math::Counter(width: 16)
                     let mut instance_constants = HashMap::new();
                     let mut typed_args = Vec::new();
 
@@ -734,7 +854,8 @@ pub(crate) fn infer_expr(ctx: &mut InferContext, expr: &Expr) -> Result<TypedExp
                         inst_ports.insert(p_name.clone(), (*dir, res_ty));
                     }
                     for (iface_port_name, (role, iface_name)) in &sig.interface_ports {
-                        if let Some(iface_sig) = ctx.interface_definitions.get(iface_name) {
+                        let resolved_iface_name = ctx.resolve_symbol_name(iface_name);
+                        if let Some(iface_sig) = ctx.interface_definitions.get(&resolved_iface_name) {
                             let mut instance_signals = HashMap::new();
                             for (sig_dir, sig_name, sig_ty) in &iface_sig.signals {
                                 let dir = match (role, sig_dir) {
@@ -769,15 +890,24 @@ pub(crate) fn infer_expr(ctx: &mut InferContext, expr: &Expr) -> Result<TypedExp
                     ctx.current_constants = old_consts;
 
                     let inst_ty = ResolvedType::ModuleInstance {
-                        module_name: fn_ident.name.clone(),
+                        module_name: resolved_name,
                         ports: inst_ports,
                     };
 
-                    let typed_callee = TypedExpr::new(
-                        TypedExprKind::Ident(fn_ident.clone()),
-                        inst_ty.clone(),
-                        callee.span,
-                    );
+                    let typed_callee = match &callee.kind {
+                        ExprKind::Ident(fn_ident) => TypedExpr::new(
+                            TypedExprKind::Ident(fn_ident.clone()),
+                            inst_ty.clone(),
+                            callee.span,
+                        ),
+                        ExprKind::Path(path) => TypedExpr::new(
+                            TypedExprKind::Path(path.clone()),
+                            inst_ty.clone(),
+                            callee.span,
+                        ),
+                        _ => unreachable!(),
+                    };
+
                     return Ok(TypedExpr::new(
                         TypedExprKind::Call {
                             callee: Box::new(typed_callee),

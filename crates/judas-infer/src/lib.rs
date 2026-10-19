@@ -10,6 +10,6 @@ pub mod unify;
 
 pub use context::{InferContext, InterfaceSignature, StructSignature};
 pub use error::TypeError;
-pub use infer::infer_source_file;
+pub use infer::{infer_source_file, infer_source_file_with_path};
 pub use tast::*;
 pub use types::{AffineForm, ResolvedType, WidthExpr};

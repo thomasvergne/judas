@@ -5,8 +5,8 @@ edition = "2024"
 
 [dependencies]
 judas-ast = { workspace = true }
+judas-parser = { workspace = true }
 miette = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]
-judas-parser = { workspace = true }

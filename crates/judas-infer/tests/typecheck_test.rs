@@ -741,3 +741,202 @@ extern module InvalidExtern {
     assert!(err.to_string().contains("cannot contain internal logic"));
 }
 
+#[test]
+fn test_typecheck_namespaces_and_qualified_paths() {
+    let src = r#"
+namespace math {
+    pub struct Point {
+        x: UInt<16>,
+        y: UInt<16>,
+    }
+
+    pub module Adder {
+        input a: UInt<16>
+        input b: UInt<16>
+        output sum: UInt<16>
+        sum = a + b
+    }
+}
+
+module Top {
+    input a: UInt<16>
+    input b: UInt<16>
+    output res: UInt<16>
+
+    let p = math::Point { x: 10, y: 20 }
+    let add = math::Adder()
+    connect add.a = a
+    connect add.b = b
+    connect res = add.sum
+}
+"#;
+
+    let source = parse_source(src).expect("Parse error");
+    let typed = infer_source_file(&source).expect("Inference error");
+    assert_eq!(typed.items.len(), 2);
+}
+
+#[test]
+fn test_typecheck_import_single_and_alias() {
+    let src = r#"
+namespace math {
+    pub module Adder {
+        input a: UInt<16>
+        input b: UInt<16>
+        output sum: UInt<16>
+        sum = a + b
+    }
+}
+
+import math::Adder;
+import math::Adder as FastAdder;
+
+module Top {
+    input a: UInt<16>
+    input b: UInt<16>
+    output sum1: UInt<16>
+    output sum2: UInt<16>
+
+    let a1 = Adder()
+    let a2 = FastAdder()
+    connect a1.a = a
+    connect a1.b = b
+    connect a2.a = a
+    connect a2.b = b
+    connect sum1 = a1.sum
+    connect sum2 = a2.sum
+}
+"#;
+
+    let source = parse_source(src).expect("Parse error");
+    infer_source_file(&source).expect("Inference error");
+}
+
+#[test]
+fn test_typecheck_import_glob() {
+    let src = r#"
+namespace math {
+    pub struct Point {
+        x: UInt<16>,
+        y: UInt<16>,
+    }
+
+    pub module Adder {
+        input a: UInt<16>
+        input b: UInt<16>
+        output sum: UInt<16>
+        sum = a + b
+    }
+}
+
+import math::*;
+
+module Top {
+    input a: UInt<16>
+    input b: UInt<16>
+    output sum: UInt<16>
+
+    let pt = Point { x: 1, y: 2 }
+    let add = Adder()
+    connect add.a = a
+    connect add.b = b
+    connect sum = add.sum
+}
+"#;
+
+    let source = parse_source(src).expect("Parse error");
+    infer_source_file(&source).expect("Inference error");
+}
+
+#[test]
+fn test_typecheck_private_visibility_error() {
+    let src = r#"
+namespace math {
+    struct Secret {
+        key: UInt<32>,
+    }
+
+    module InternalModule() {
+    }
+}
+
+module Top {
+    let s = math::Secret { key: 42 }
+}
+"#;
+
+    let source = parse_source(src).expect("Parse error");
+    let err = infer_source_file(&source).unwrap_err();
+    assert!(err.to_string().contains("private"));
+}
+
+#[test]
+fn test_typecheck_file_import_alias() {
+    let src = r#"
+import "examples/counter.jd" as cnt_mod;
+
+module Top {
+    input clk: Clock
+    input rst: Bool
+    input en: Bool
+    output cnt: UInt<16>
+
+    let c = cnt_mod::Counter(width: 16)
+    connect c.clk = clk
+    connect c.reset = rst
+    connect c.enable = en
+    connect cnt = c.count
+}
+"#;
+
+    let source = parse_source(src).expect("Parse error");
+    infer_source_file(&source).expect("Inference error");
+}
+
+#[test]
+fn test_typecheck_file_import_item() {
+    let src = r#"
+import "examples/counter.jd"::Counter;
+
+module Top {
+    input clk: Clock
+    input rst: Bool
+    input en: Bool
+    output cnt: UInt<16>
+
+    let c = Counter(width: 16)
+    connect c.clk = clk
+    connect c.reset = rst
+    connect c.enable = en
+    connect cnt = c.count
+}
+"#;
+
+    let source = parse_source(src).expect("Parse error");
+    infer_source_file(&source).expect("Inference error");
+}
+
+#[test]
+fn test_typecheck_file_import() {
+    let src = r#"
+import "examples/counter.jd";
+
+module Top {
+    input clk: Clock
+    input rst: Bool
+    input en: Bool
+    output cnt: UInt<16>
+
+    let c = Counter(width: 16)
+    connect c.clk = clk
+    connect c.reset = rst
+    connect c.enable = en
+    connect cnt = c.count
+}
+"#;
+
+    let source = parse_source(src).expect("Parse error");
+    infer_source_file(&source).expect("Inference error");
+}
+
+
