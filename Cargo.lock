@@ -499,9 +499,11 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "judas-ast",
+ "judas-codegen",
  "judas-infer",
  "judas-lsp",
  "judas-parser",
+ "judas-sim",
  "miette",
  "thiserror",
  "tokio",
@@ -512,6 +514,15 @@ name = "judas-ast"
 version = "0.1.0"
 dependencies = [
  "miette",
+]
+
+[[package]]
+name = "judas-codegen"
+version = "0.1.0"
+dependencies = [
+ "judas-ast",
+ "judas-infer",
+ "judas-parser",
 ]
 
 [[package]]
@@ -543,6 +554,16 @@ version = "0.1.0"
 dependencies = [
  "judas-ast",
  "miette",
+ "thiserror",
+]
+
+[[package]]
+name = "judas-sim"
+version = "0.1.0"
+dependencies = [
+ "judas-ast",
+ "judas-infer",
+ "judas-parser",
  "thiserror",
 ]
 

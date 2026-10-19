@@ -11,6 +11,8 @@ resolver = "3"
 judas-ast = { path = "crates/judas-ast" }
 judas-parser = { path = "crates/judas-parser" }
 judas-infer = { path = "crates/judas-infer" }
+judas-codegen = { path = "crates/judas-codegen" }
+judas-sim = { path = "crates/judas-sim" }
 judas-lsp = { path = "crates/judas-lsp" }
 miette = { version = "7.6.0", features = ["derive", "fancy"] }
 thiserror = "2.0.21"
@@ -24,6 +26,8 @@ serde_json = "1.0"
 judas-ast = { workspace = true }
 judas-parser = { workspace = true }
 judas-infer = { workspace = true }
+judas-codegen = { workspace = true }
+judas-sim = { workspace = true }
 judas-lsp = { workspace = true }
 miette = { workspace = true }
 thiserror = { workspace = true }
