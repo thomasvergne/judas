@@ -1,4 +1,5 @@
 use crate::expr::Expr;
+use crate::path::{Path, Visibility};
 use crate::span::Span;
 use crate::stmt::{Stmt, Trigger};
 use crate::types::{Ident, Type};
@@ -92,12 +93,12 @@ pub enum InterfaceRole {
     Slave,
 }
 
-/// Represents an interface port declaration on a module (e.g. `master bus: AxiStream`).
+/// Represents an interface port declaration on a module (e.g. `master bus: AxiStream` or `master bus: axi::AxiStream`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InterfacePortDecl {
     pub role: InterfaceRole,
     pub name: Ident,
-    pub interface_name: Ident,
+    pub interface_name: Path,
     pub span: Span,
 }
 
@@ -193,6 +194,7 @@ pub struct ModuleDecl {
     pub items: Vec<ModuleItem>,
     pub is_extern: bool,
     pub foreign_path: Option<String>,
+    pub visibility: Visibility,
     pub span: Span,
 }
 
@@ -224,6 +226,7 @@ impl EnumVariant {
 pub struct EnumDecl {
     pub name: Ident,
     pub variants: Vec<EnumVariant>,
+    pub visibility: Visibility,
     pub span: Span,
 }
 
@@ -246,6 +249,7 @@ impl StructField {
 pub struct StructDecl {
     pub name: Ident,
     pub fields: Vec<StructField>,
+    pub visibility: Visibility,
     pub span: Span,
 }
 
@@ -281,21 +285,71 @@ impl InterfaceSignal {
 pub struct InterfaceDecl {
     pub name: Ident,
     pub signals: Vec<InterfaceSignal>,
+    pub visibility: Visibility,
     pub span: Span,
 }
 
-/// Represents the kind of an item.
+/// Represents a namespace declaration (scoping container).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NamespaceDecl {
+    pub name: Ident,
+    pub items: Vec<Item>,
+    pub visibility: Visibility,
+    pub span: Span,
+}
+
+/// Represents the source of an import.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ImportSource {
+    Namespace(Path),
+    File(String),
+}
+
+/// An individual item in an import statement.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ImportItem {
+    pub name: Ident,
+    pub alias: Option<Ident>,
+    pub span: Span,
+}
+
+/// The kind of import (single item, multiple items, wildcard, or module alias).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ImportKind {
+    /// `import foo;` or `import foo::bar;`
+    Item {
+        name: Ident,
+        alias: Option<Ident>,
+    },
+    /// `import foo::{bar, baz};`
+    Multiple(Vec<ImportItem>),
+    /// `import foo::*;`
+    Wildcard,
+    /// `import "foo.jd" as bar;`
+    ModuleAlias(Ident),
+}
+
+/// Represents an import declaration.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ImportDecl {
+    pub source: ImportSource,
+    pub kind: ImportKind,
+    pub is_pub: bool,
+    pub span: Span,
+}
+
+/// Represents the kind of a top-level item.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ItemKind {
     Module(ModuleDecl),
     Enum(EnumDecl),
     Struct(StructDecl),
     Interface(InterfaceDecl),
+    Namespace(NamespaceDecl),
+    Import(ImportDecl),
 }
 
 /// Represents an item.
-///
-/// An `Item` is an item that can be a module, enum, struct, or interface declaration.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Item {
     pub kind: ItemKind,

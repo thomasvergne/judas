@@ -1,4 +1,5 @@
 use crate::expr::Expr;
+use crate::path::Path;
 use crate::span::Span;
 
 /// Represents an identifier.
@@ -63,8 +64,8 @@ pub enum TypeKind {
         size: Box<TypeArg>,
     },
 
-    /// Represents a named type, such as `Vec<T>` or `HashMap<K, V>`.
-    Named { name: Ident, args: Vec<TypeArg> },
+    /// Represents a named type, such as `Point`, `math::Complex`, or `Vec<T>`.
+    Named { path: Path, args: Vec<TypeArg> },
 }
 
 /// Full type representation.

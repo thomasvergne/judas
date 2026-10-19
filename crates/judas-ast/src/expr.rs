@@ -1,3 +1,4 @@
+use crate::path::Path;
 use crate::span::Span;
 use crate::types::{Ident, TypeArg};
 
@@ -82,6 +83,9 @@ pub enum ExprKind {
     /// A reference to an identifier such as `foo`.
     Ident(Ident),
 
+    /// A reference to a qualified path such as `math::Adder` or `a::b::c`.
+    Path(Path),
+
     /// A field access expression such as `foo.bar`.
     FieldAccess { base: Box<Expr>, field: Ident },
 
@@ -106,8 +110,9 @@ pub enum ExprKind {
     /// An index expression such as `foo[bar]`.
     Index { base: Box<Expr>, index: Box<Expr> },
 
-    /// A struct initialization expression such as `Point { x: 1, y: 2 }`.
-    StructInit { name: Ident, fields: Vec<FieldInit> },
+    /// A struct initialization expression such as `Point { x: 1, y: 2 }`
+    /// or `math::Point { x: 1, y: 2 }`.
+    StructInit { path: Path, fields: Vec<FieldInit> },
 }
 
 /// Represents a field initialization in a struct literal.
