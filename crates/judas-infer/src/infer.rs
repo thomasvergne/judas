@@ -310,6 +310,24 @@ fn infer_module_decl(
         }
     }
 
+    // Check extern module restrictions: extern modules can only have ports and interface ports
+    if module.is_extern {
+        for item in &module.items {
+            match &item.kind {
+                ModuleItemKind::Port(_) | ModuleItemKind::InterfacePort(_) => {}
+                _ => {
+                    return Err(TypeError::new(
+                        format!(
+                            "Extern module `{}` cannot contain internal logic (registers, connections, or on blocks); only ports and interfaces are allowed",
+                            module.name.name
+                        ),
+                        item.span,
+                    ));
+                }
+            }
+        }
+    }
+
     // Typecheck each module item
     let mut typed_items = Vec::new();
     for item in &module.items {
@@ -320,6 +338,8 @@ fn infer_module_decl(
     Ok(TypedModuleDecl {
         name: module.name.clone(),
         items: typed_items,
+        is_extern: module.is_extern,
+        foreign_path: module.foreign_path.clone(),
         span: module.span,
     })
 }

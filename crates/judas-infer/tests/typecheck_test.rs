@@ -685,3 +685,59 @@ fn test_typecheck_mini_cpu() {
     let typed_source = infer_source_file(&source).expect("Type inference error in mini_cpu.jd");
     assert_eq!(typed_source.items.len(), 7);
 }
+
+#[test]
+fn test_typecheck_extern_module() {
+    let src = r#"
+extern "vendor/dsp48.v" module DSP48E1 {
+    input clk: Clock,
+    input a: Bits<25>,
+    input b: Bits<18>,
+    output p: Bits<48>,
+}
+
+module Top {
+    input clk: Clock
+    input a: Bits<25>
+    input b: Bits<18>
+    output result: Bits<48>
+
+    let dsp = DSP48E1()
+    connect dsp.clk = clk
+    connect dsp.a = a
+    connect dsp.b = b
+    connect result = dsp.p
+}
+"#;
+
+    let source = parse_source(src).expect("Parse error");
+    let typed_source = infer_source_file(&source).expect("Inference error");
+
+    assert_eq!(typed_source.items.len(), 2);
+    let TypedItemKind::Module(ref m1) = typed_source.items[0].kind else {
+        panic!("Expected module");
+    };
+    assert!(m1.is_extern);
+    assert_eq!(m1.foreign_path.as_deref(), Some("vendor/dsp48.v"));
+    assert_eq!(m1.name.name, "DSP48E1");
+
+    let TypedItemKind::Module(ref m2) = typed_source.items[1].kind else {
+        panic!("Expected module");
+    };
+    assert!(!m2.is_extern);
+}
+
+#[test]
+fn test_typecheck_extern_module_with_logic_error() {
+    let src = r#"
+extern module InvalidExtern {
+    input clk: Clock,
+    register r: UInt<8> = 0,
+}
+"#;
+
+    let source = parse_source(src).expect("Parse error");
+    let err = infer_source_file(&source).unwrap_err();
+    assert!(err.to_string().contains("cannot contain internal logic"));
+}
+

@@ -305,6 +305,8 @@ impl TypedModuleItem {
 pub struct TypedModuleDecl {
     pub name: Ident,
     pub items: Vec<TypedModuleItem>,
+    pub is_extern: bool,
+    pub foreign_path: Option<String>,
     pub span: Span,
 }
 
