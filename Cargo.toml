@@ -1,0 +1,25 @@
+[package]
+name = "judas"
+version = "0.1.0"
+edition = "2024"
+
+[workspace]
+members = ["crates/*"]
+resolver = "3"
+
+[workspace.dependencies]
+judas-ast = { path = "crates/judas-ast" }
+judas-parser = { path = "crates/judas-parser" }
+judas-infer = { path = "crates/judas-infer" }
+miette = { version = "7.6.0", features = ["derive", "fancy"] }
+thiserror = "2.0.21"
+clap = { version = "4.5", features = ["derive"] }
+
+[dependencies]
+judas-ast = { workspace = true }
+judas-parser = { workspace = true }
+judas-infer = { workspace = true }
+miette = { workspace = true }
+thiserror = { workspace = true }
+clap = { workspace = true }
+
