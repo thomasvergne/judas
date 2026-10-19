@@ -60,6 +60,7 @@ pub struct InferContext {
     pub(crate) current_constants: HashMap<String, i64>,
     pub(crate) current_signals: HashMap<String, ResolvedType>,
     pub(crate) current_instances: HashMap<String, HashMap<String, (PortDirection, ResolvedType)>>,
+    pub(crate) imported_items: Vec<crate::tast::TypedItem>,
 }
 
 impl Default for InferContext {
@@ -84,6 +85,7 @@ impl InferContext {
             current_constants: HashMap::new(),
             current_signals: HashMap::new(),
             current_instances: HashMap::new(),
+            imported_items: Vec::new(),
         }
     }
 

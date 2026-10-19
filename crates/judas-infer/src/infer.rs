@@ -15,8 +15,8 @@ use crate::tast::{
     TypedAssertDecl, TypedConnectionDecl, TypedEnumDecl, TypedEnumVariant, TypedExpr,
     TypedExprKind, TypedInterfaceDecl, TypedInterfacePortDecl, TypedInterfaceSignal, TypedItem,
     TypedItemKind, TypedLetDecl, TypedModuleDecl, TypedModuleItem, TypedModuleItemKind,
-    TypedNamespaceDecl, TypedOnBlock, TypedPortDecl, TypedRegisterDecl, TypedSourceFile, TypedStmt,
-    TypedStmtKind, TypedStructDecl, TypedStructField, TypedTrigger,
+    TypedModuleParam, TypedNamespaceDecl, TypedOnBlock, TypedPortDecl, TypedRegisterDecl,
+    TypedSourceFile, TypedStmt, TypedStmtKind, TypedStructDecl, TypedStructField, TypedTrigger,
 };
 use crate::types::{ResolvedType, WidthExpr};
 
@@ -113,6 +113,7 @@ pub fn infer_source_file_with_path(
     // Pass 4: Final substitution pass to substitute all type variables
     let mut final_typed_source = TypedSourceFile {
         items: typed_items,
+        imported_items: std::mem::take(&mut ctx.imported_items),
         span: source.span,
     };
     finalize_source_file(&ctx, &mut final_typed_source);
@@ -333,7 +334,8 @@ fn process_import(
                     file_dir.as_deref(),
                 )?;
                 collect_modules_pass2(ctx, &parsed.items, "")?;
-                let _ = infer_items_pass3(ctx, &parsed.items, "")?;
+                let imported_typed = infer_items_pass3(ctx, &parsed.items, "")?;
+                ctx.imported_items.extend(imported_typed);
             }
 
             match &import_decl.kind {
@@ -404,6 +406,17 @@ fn collect_modules_pass2(
                         None
                     };
                     params.insert(p.name.name.clone(), (ty, default));
+                }
+                for g in &module_decl.generics {
+                    if let GenericParamKind::Const { name, ty, default } = &g.kind {
+                        let resolved_ty = ctx.resolve_type(ty)?;
+                        let def_val = if let Some(def_expr) = default {
+                            Some(ctx.eval_const_expr(def_expr)? as i64)
+                        } else {
+                            None
+                        };
+                        params.insert(name.name.clone(), (resolved_ty, def_val));
+                    }
                 }
 
                 let mut ports = HashMap::new();
@@ -600,25 +613,39 @@ fn infer_module_decl(
     ctx.current_instances.clear();
 
     // Populate constants from module parameters / generics
+    let mut typed_params = Vec::new();
     for param in &module.params {
-        if let Some(def_expr) = &param.default {
-            let val = ctx.eval_const_expr(def_expr)?;
-            ctx.current_constants
-                .insert(param.name.name.clone(), val as i64);
+        let def_val = if let Some(def_expr) = &param.default {
+            let val = ctx.eval_const_expr(def_expr)? as i64;
+            ctx.current_constants.insert(param.name.name.clone(), val);
+            Some(val)
         } else {
             ctx.current_signals
                 .insert(param.name.name.clone(), ResolvedType::uint(32));
-        }
+            None
+        };
+        typed_params.push(TypedModuleParam {
+            name: param.name.clone(),
+            default: def_val,
+            span: param.span,
+        });
     }
     for generic in &module.generics {
         if let GenericParamKind::Const { name, default, .. } = &generic.kind {
-            if let Some(def_expr) = default {
-                let val = ctx.eval_const_expr(def_expr)?;
-                ctx.current_constants.insert(name.name.clone(), val as i64);
+            let def_val = if let Some(def_expr) = default {
+                let val = ctx.eval_const_expr(def_expr)? as i64;
+                ctx.current_constants.insert(name.name.clone(), val);
+                Some(val)
             } else {
                 ctx.current_signals
                     .insert(name.name.clone(), ResolvedType::uint(32));
-            }
+                None
+            };
+            typed_params.push(TypedModuleParam {
+                name: name.clone(),
+                default: def_val,
+                span: generic.span,
+            });
         }
     }
 
@@ -700,6 +727,7 @@ fn infer_module_decl(
 
     Ok(TypedModuleDecl {
         name: module.name.clone(),
+        params: typed_params,
         items: typed_items,
         is_extern: module.is_extern,
         foreign_path: module.foreign_path.clone(),
@@ -833,15 +861,33 @@ fn infer_module_item(
             ))
         }
 
-        ModuleItemKind::InterfacePort(iface_port) => Ok(TypedModuleItem::new(
-            TypedModuleItemKind::InterfacePort(TypedInterfacePortDecl {
-                role: iface_port.role,
-                name: iface_port.name.clone(),
-                interface_name: iface_port.interface_name.clone(),
-                span: iface_port.span,
-            }),
-            item.span,
-        )),
+        ModuleItemKind::InterfacePort(iface_port) => {
+            let iface_path = iface_port.interface_name.to_string_path();
+            let resolved_iface_name = ctx.resolve_symbol_name(&iface_path);
+            let mut ordered_signals = Vec::new();
+            if let Some(iface_sig) = ctx.interface_definitions.get(&resolved_iface_name) {
+                for (sig_dir, sig_name, sig_ty) in &iface_sig.signals {
+                    let dir = match (iface_port.role, sig_dir) {
+                        (InterfaceRole::Master, InterfaceSignalDir::Out) => PortDirection::Output,
+                        (InterfaceRole::Master, InterfaceSignalDir::In) => PortDirection::Input,
+                        (InterfaceRole::Slave, InterfaceSignalDir::Out) => PortDirection::Input,
+                        (InterfaceRole::Slave, InterfaceSignalDir::In) => PortDirection::Output,
+                    };
+                    ordered_signals.push((dir, sig_name.clone(), sig_ty.clone()));
+                }
+            }
+
+            Ok(TypedModuleItem::new(
+                TypedModuleItemKind::InterfacePort(TypedInterfacePortDecl {
+                    role: iface_port.role,
+                    name: iface_port.name.clone(),
+                    interface_name: iface_port.interface_name.clone(),
+                    signals: ordered_signals,
+                    span: iface_port.span,
+                }),
+                item.span,
+            ))
+        }
 
         ModuleItemKind::On(on_block) => {
             let typed_signal = infer_expr(ctx, &on_block.trigger.signal)?;
@@ -885,6 +931,7 @@ fn infer_module_item(
 /// Finalizes the source file by replacing any TyVar or InferInt
 /// in the TypedSourceFile with its final resolved type.
 fn finalize_source_file(ctx: &InferContext, source: &mut TypedSourceFile) {
+    finalize_items(ctx, &mut source.imported_items);
     finalize_items(ctx, &mut source.items);
 }
 

@@ -273,6 +273,15 @@ pub struct TypedInterfacePortDecl {
     pub role: InterfaceRole,
     pub name: Ident,
     pub interface_name: Path,
+    pub signals: Vec<(PortDirection, String, ResolvedType)>,
+    pub span: Span,
+}
+
+/// Represents a typed module parameter / generic constant.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TypedModuleParam {
+    pub name: Ident,
+    pub default: Option<i64>,
     pub span: Span,
 }
 
@@ -305,6 +314,7 @@ impl TypedModuleItem {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TypedModuleDecl {
     pub name: Ident,
+    pub params: Vec<TypedModuleParam>,
     pub items: Vec<TypedModuleItem>,
     pub is_extern: bool,
     pub foreign_path: Option<String>,
@@ -398,5 +408,6 @@ impl TypedItem {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TypedSourceFile {
     pub items: Vec<TypedItem>,
+    pub imported_items: Vec<TypedItem>,
     pub span: Span,
 }
