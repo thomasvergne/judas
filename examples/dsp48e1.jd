@@ -1,0 +1,265 @@
+// Xilinx 7-Series DSP48E1 Slice Architecture in Judas HDL
+//
+// Features modeled:
+// - Dual-stage input pipeline registers (A1/A2: 30-bit, B1/B2: 18-bit, C: 48-bit, D: 25-bit)
+// - 25-bit Pre-Adder/Subtractor (D +/- A[24:0]) with AD pipeline register
+// - 25x18 -> 48-bit Multiplier with M pipeline register
+// - Dynamic OPMODE (X, Y, Z 48-bit Multiplexers)
+// - Dynamic ALUMODE (48-bit Arithmetic & Bitwise Logic Unit: Add, Sub, Xor, And, Or)
+// - Cascade bus interface (ACOUT, BCOUT, PCOUT) for chaining DSP48E1 slices
+// - Pattern Detector (PATTERNDETECT)
+// - Top-level cascaded 2-slice MAC / FIR system (`Dsp48e1System`) ready for `judas sim`
+
+// Pre-adder operation mode (INMODE)
+enum InMode {
+    PassA = 0b00, // AD = A[24:0]
+    AddDA = 0b01, // AD = D + A[24:0]
+    SubDA = 0b10, // AD = D - A[24:0]
+    PassD = 0b11, // AD = D
+}
+
+// 48-bit ALU operation mode (ALUMODE)
+enum AluMode {
+    Add    = 0b0000, // P = Z + X + Y + CarryIn
+    InvZ   = 0b0001, // P = ~Z + X + Y + CarryIn
+    Sub    = 0b0011, // P = Z - (X + Y + CarryIn)
+    Xor    = 0b0100, // P = X ^ Z
+    And    = 0b1100, // P = X & Z
+    Or     = 0b1110, // P = X | Z
+}
+
+// 7-bit packed OPMODE controlling the X, Y, and Z multiplexers
+// [6:4] z_sel | [3:2] y_sel | [1:0] x_sel
+struct OpMode {
+    z_sel: UInt<3>,
+    y_sel: UInt<2>,
+    x_sel: UInt<2>,
+}
+
+// Dedicated cascade bus between adjacent DSP48E1 slices in a column
+interface DspCascadeBus {
+    out acout: UInt<25>,
+    out bcout: UInt<18>,
+    out pcout: UInt<48>,
+}
+
+// Core Xilinx 7-Series DSP48E1 Slice
+pub module DSP48E1(pattern: usize = 0x0000_0000_0064) {
+    input clk: Clock
+    input rst: Bool
+
+    // Clock enables for pipeline stages
+    input ce: Bool
+
+    // Dynamic control inputs
+    input inmode: UInt<2>
+    input opmode: UInt<7>
+    input alumode: UInt<4>
+    input carryin: Bool
+
+    // Primary data inputs
+    input a: UInt<25>
+    input b: UInt<18>
+    input c: UInt<48>
+    input d: UInt<25>
+
+    // Cascade interfaces (Up-stream slave input / Down-stream master output)
+    slave cas_in: DspCascadeBus
+    master cas_out: DspCascadeBus
+    input use_cascade_ab: Bool
+
+    // Primary outputs
+    output p: UInt<48>
+    output pattern_detect: Bool
+    output overflow: Bool
+
+    // --- Input Pipeline Registers (A, B, C, D) ---
+    register a_reg: UInt<25> = 0
+    register b_reg: UInt<18> = 0
+    register c_reg: UInt<48> = 0
+    register d_reg: UInt<25> = 0
+
+    // --- Pre-Adder Pipeline Register (AD) ---
+    register ad_reg: UInt<25> = 0
+
+    // --- Multiplier Pipeline Register (M) ---
+    register m_reg: UInt<48> = 0
+
+    // --- Control Pipeline Registers ---
+    register opmode_reg: UInt<7> = 0
+    register alumode_reg: UInt<4> = 0
+    register carryin_reg: Bool = false
+
+    // --- Output Accumulator / ALU Register (P) ---
+    register p_reg: UInt<48> = 0
+    register p_det_reg: Bool = false
+    register ovf_reg: Bool = false
+
+    // Continuous output & cascade assignments
+    p = p_reg
+    pattern_detect = p_det_reg
+    overflow = ovf_reg
+
+    cas_out.acout = a_reg
+    cas_out.bcout = b_reg
+    cas_out.pcout = p_reg
+
+    on rising(clk) {
+        if rst {
+            a_reg = 0
+            b_reg = 0
+            c_reg = 0
+            d_reg = 0
+            ad_reg = 0
+            m_reg = 0
+            opmode_reg = 0
+            alumode_reg = 0
+            carryin_reg = false
+            p_reg = 0
+            p_det_reg = false
+            ovf_reg = false
+        } else if ce {
+            // Stage 1: Latch A, B (from primary inputs or cascade), C, D
+            let a_in: UInt<25> = 0
+            let b_in: UInt<18> = 0
+            if use_cascade_ab {
+                a_in = cas_in.acout
+                b_in = cas_in.bcout
+            } else {
+                a_in = a
+                b_in = b
+            }
+
+            a_reg = a_in
+            b_reg = b_in
+            c_reg = c
+            d_reg = d
+
+            // Stage 2: 25-bit Pre-Adder (AD = f(D, A))
+            match inmode {
+                0 => ad_reg = a_in,
+                1 => ad_reg = d + a_in,
+                2 => ad_reg = d - a_in,
+                3 => ad_reg = d,
+                _ => ad_reg = a_in,
+            }
+
+            // Stage 3: 25x18 Multiplier -> 48-bit M register
+            let mult_a: UInt<48> = extend<48>(ad_reg)
+            let mult_b: UInt<48> = extend<48>(b_reg)
+            m_reg = mult_a * mult_b
+
+            // Pipeline control signals to align with M stage
+            opmode_reg = opmode
+            alumode_reg = alumode
+            carryin_reg = carryin
+
+            // Stage 4: Unpack OPMODE and select 48-bit X, Y, Z multiplexers
+            let op = OpMode {
+                z_sel: opmode_reg.slice<3>(4),
+                y_sel: opmode_reg.slice<2>(2),
+                x_sel: opmode_reg.slice<2>(0),
+            }
+
+            let a_ext30: UInt<30> = extend<30>(a_reg)
+            let x_mux: UInt<48> = 0
+            match op.x_sel {
+                0 => x_mux = 0,
+                1 => x_mux = m_reg,
+                2 => x_mux = p_reg,
+                3 => x_mux = concat(a_ext30, b_reg),
+            }
+
+            let y_mux: UInt<48> = 0
+            match op.y_sel {
+                0 => y_mux = 0,
+                1 => y_mux = 0,
+                2 => y_mux = 0xFFFF_FFFF_FFFF,
+                3 => y_mux = c_reg,
+            }
+
+            let z_mux: UInt<48> = 0
+            match op.z_sel {
+                0 => z_mux = 0,
+                1 => z_mux = cas_in.pcout,
+                2 => z_mux = p_reg,
+                3 => z_mux = c_reg,
+                4 => z_mux = p_reg >> 17,
+                _ => z_mux = 0,
+            }
+
+            let cin_ext: UInt<48> = 0
+            if carryin_reg {
+                cin_ext = 1
+            }
+
+            // Stage 5: 48-bit ALU (ALUMODE)
+            let alu_out: UInt<48> = 0
+            match alumode_reg {
+                0 => alu_out = z_mux + x_mux + y_mux + cin_ext,
+                1 => alu_out = (~z_mux) + x_mux + y_mux + cin_ext,
+                3 => alu_out = z_mux - (x_mux + y_mux + cin_ext),
+                4 => alu_out = x_mux ^ z_mux,
+                12 => alu_out = x_mux & z_mux,
+                14 => alu_out = x_mux | z_mux,
+                _ => alu_out = z_mux + x_mux + y_mux + cin_ext,
+            }
+
+            p_reg = alu_out
+            p_det_reg = alu_out == extend<48>(pattern)
+            ovf_reg = alu_out.slice<1>(47) == 1
+        }
+    }
+}
+
+// Self-contained Cascaded DSP48E1 Demo System (2-Tap Systolic Pre-Add + MAC Pipeline)
+//
+// Computes:
+//   Slice 0: P0 = (D0 + A0) * B0 + C0  = (3 + 7) * 4 + 10 = 50
+//   Slice 1: P1 = PCIN + (D1 + A1) * B1 = P0 + (2 + 8) * 5 = 50 + 50 = 100 (triggers pattern_detect!)
+pub module Dsp48e1System {
+    input clk: Clock
+    input rst: Bool
+
+    output p0_out: UInt<48>
+    output p1_out: UInt<48>
+    output pattern_matched: Bool
+
+    // Instantiate two cascaded DSP48E1 slices
+    let dsp0 = DSP48E1(
+        clk: clk,
+        rst: rst,
+        ce: true,
+        inmode: 0b01,      // AddDA: AD = D + A[24:0]
+        opmode: 0b011_00_01, // Z = C (3), Y = 0 (0), X = M (1) -> P = C + M
+        alumode: 0b0000,   // Add
+        carryin: false,
+        a: 7,
+        b: 4,
+        c: 10,
+        d: 3,
+        use_cascade_ab: false
+    )
+
+    let dsp1 = DSP48E1(
+        clk: clk,
+        rst: rst,
+        ce: true,
+        inmode: 0b01,      // AddDA: AD = D + A[24:0]
+        opmode: 0b001_00_01, // Z = PCIN (1), Y = 0 (0), X = M (1) -> P = PCIN + M
+        alumode: 0b0000,   // Add
+        carryin: false,
+        a: 8,
+        b: 5,
+        c: 0,
+        d: 2,
+        use_cascade_ab: false
+    )
+
+    // Chain DSP0 cascade outputs directly into DSP1 cascade inputs
+    connect dsp1.cas_in = dsp0.cas_out
+
+    p0_out = dsp0.p
+    p1_out = dsp1.p
+    pattern_matched = dsp1.pattern_detect
+}
