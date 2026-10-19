@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
-use judas_infer::infer_source_file;
+use judas_infer::infer_source_file_with_path;
 use judas_parser::parse_source;
 use miette::{NamedSource, Report};
 
@@ -66,7 +66,7 @@ fn check_file(file_path: &Path) -> Result<judas_infer::TypedSourceFile, ExitCode
     };
 
     // 2. Type Inference & Checking
-    let typed_ast = match infer_source_file(&ast) {
+    let typed_ast = match infer_source_file_with_path(&ast, Some(file_path)) {
         Ok(tast) => tast,
         Err(err) => {
             let report = Report::new(err).with_source_code(NamedSource::new(&path_str, src));
