@@ -413,6 +413,7 @@ impl<'a> Lexer<'a> {
                     }
                     match ident.as_str() {
                         "module" => TokenKind::Module,
+                        "extern" => TokenKind::Extern,
                         "enum" => TokenKind::Enum,
                         "input" => TokenKind::Input,
                         "output" => TokenKind::Output,

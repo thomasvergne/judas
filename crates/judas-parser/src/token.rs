@@ -5,6 +5,7 @@ use std::fmt;
 pub enum TokenKind {
     // Keywords
     Module,
+    Extern,
     Enum,
     Input,
     Output,
@@ -72,6 +73,7 @@ impl fmt::Display for TokenKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             TokenKind::Module => write!(f, "module"),
+            TokenKind::Extern => write!(f, "extern"),
             TokenKind::Enum => write!(f, "enum"),
             TokenKind::Input => write!(f, "input"),
             TokenKind::Output => write!(f, "output"),

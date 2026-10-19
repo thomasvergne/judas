@@ -65,3 +65,40 @@ module Incomplete {
     // Line 5 contains `}` where a type was expected
     assert_eq!(err.span.line, 5);
 }
+
+#[test]
+fn test_extern_module_parsing() {
+    let src = r#"
+extern "vendor/dsp48.v" module DSP48E1 {
+    input clk: Clock,
+    input a: Bits<25>,
+    input b: Bits<18>,
+    output p: Bits<48>,
+}
+
+extern module SimplePll {
+    input clk_in: Clock,
+    output clk_out: Clock,
+}
+"#;
+
+    let sf = parse_source(src).expect("Failed to parse extern modules");
+    assert_eq!(sf.items.len(), 2);
+
+    let judas_ast::item::ItemKind::Module(ref m1) = sf.items[0].kind else {
+        panic!("Expected module");
+    };
+    assert!(m1.is_extern);
+    assert_eq!(m1.foreign_path.as_deref(), Some("vendor/dsp48.v"));
+    assert_eq!(m1.name.name, "DSP48E1");
+    assert_eq!(m1.items.len(), 4);
+
+    let judas_ast::item::ItemKind::Module(ref m2) = sf.items[1].kind else {
+        panic!("Expected module");
+    };
+    assert!(m2.is_extern);
+    assert_eq!(m2.foreign_path, None);
+    assert_eq!(m2.name.name, "SimplePll");
+    assert_eq!(m2.items.len(), 2);
+}
+

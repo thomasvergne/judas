@@ -32,7 +32,7 @@ impl Parser {
     /// Parses a top-level item (`module`, `enum`, `struct`, or `interface`).
     pub fn parse_item(&mut self) -> Result<Item, ParseError> {
         match self.peek() {
-            TokenKind::Module => self.parse_module_decl().map(|m| {
+            TokenKind::Extern | TokenKind::Module => self.parse_module_decl().map(|m| {
                 let span = m.span;
                 Item::new(ItemKind::Module(m), span)
             }),
@@ -50,7 +50,7 @@ impl Parser {
             }),
             other => Err(ParseError::new(
                 format!(
-                    "Expected `module`, `enum`, `struct`, or `interface`, found {}",
+                    "Expected `module`, `extern module`, `enum`, `struct`, or `interface`, found {}",
                     other
                 ),
                 self.current_span(),
@@ -247,7 +247,26 @@ impl Parser {
     /// }
     /// ```
     pub fn parse_module_decl(&mut self) -> Result<ModuleDecl, ParseError> {
-        let start_tok = self.expect(&TokenKind::Module)?;
+        let (is_extern, foreign_path, start_span) = if self.check(&TokenKind::Extern) {
+            let extern_tok = self.advance();
+            let mut path = None;
+            if let TokenKind::StringLiteral(s) = self.peek() {
+                path = Some(s.clone());
+                self.advance();
+            }
+            self.expect(&TokenKind::Module)?;
+            if path.is_none() {
+                if let TokenKind::StringLiteral(s) = self.peek() {
+                    path = Some(s.clone());
+                    self.advance();
+                }
+            }
+            (true, path, extern_tok.span)
+        } else {
+            let start = self.expect(&TokenKind::Module)?.span;
+            (false, None, start)
+        };
+
         let name = self.expect_ident()?;
 
         // Optional generics: <T, width: usize>
@@ -270,6 +289,7 @@ impl Parser {
         self.skip_semicolons();
         while !self.check(&TokenKind::RBrace) && !self.is_at_end() {
             items.push(self.parse_module_item()?);
+            self.match_token(&TokenKind::Comma);
             self.skip_semicolons();
         }
 
@@ -280,7 +300,9 @@ impl Parser {
             generics,
             params,
             items,
-            span: start_tok.span.merge(end_tok.span),
+            is_extern,
+            foreign_path,
+            span: start_span.merge(end_tok.span),
         })
     }
 
@@ -298,6 +320,8 @@ impl Parser {
     /// ```
     pub(crate) fn parse_generic_params(&mut self) -> Result<Vec<GenericParam>, ParseError> {
         self.expect(&TokenKind::Lt)?;
+        let prev_allow_gt = self.allow_gt;
+        self.allow_gt = false;
         let mut params = Vec::new();
 
         while !self.check(&TokenKind::Gt) && !self.is_at_end() {
@@ -335,7 +359,9 @@ impl Parser {
             }
         }
 
-        self.expect(&TokenKind::Gt)?;
+        let res = self.expect(&TokenKind::Gt);
+        self.allow_gt = prev_allow_gt;
+        res?;
         Ok(params)
     }
 
