@@ -14,6 +14,15 @@ pub enum PortDirection {
     Output,
 }
 
+impl std::fmt::Display for PortDirection {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Input => write!(f, "input"),
+            Self::Output => write!(f, "output"),
+        }
+    }
+}
+
 /// Represents a port declaration.
 ///
 /// A `PortDecl` contains the direction, name, type, and
@@ -91,6 +100,15 @@ pub struct AssertDecl {
 pub enum InterfaceRole {
     Master,
     Slave,
+}
+
+impl std::fmt::Display for InterfaceRole {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Master => write!(f, "master"),
+            Self::Slave => write!(f, "slave"),
+        }
+    }
 }
 
 /// Represents an interface port declaration on a module (e.g. `master bus: AxiStream` or `master bus: axi::AxiStream`).
@@ -258,6 +276,15 @@ pub struct StructDecl {
 pub enum InterfaceSignalDir {
     In,
     Out,
+}
+
+impl std::fmt::Display for InterfaceSignalDir {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::In => write!(f, "in"),
+            Self::Out => write!(f, "out"),
+        }
+    }
 }
 
 /// Represents an individual signal declaration inside an interface.

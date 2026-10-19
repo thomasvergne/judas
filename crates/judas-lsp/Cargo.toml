@@ -1,0 +1,17 @@
+[package]
+name = "judas-lsp"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "judas-lsp"
+path = "src/main.rs"
+
+[dependencies]
+judas-ast = { workspace = true }
+judas-parser = { workspace = true }
+judas-infer = { workspace = true }
+tower-lsp = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
