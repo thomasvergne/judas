@@ -10,7 +10,7 @@ use miette::{NamedSource, Report};
 #[derive(Parser)]
 #[command(
     name = "judas",
-    author = "Thomas",
+    author = "Thomas Vergne",
     version = "0.1.0",
     about = "Judas: A modern, safe Hardware Description Language (HDL)",
     long_about = "Judas is a next-generation Hardware Description Language featuring affine width inference, \
@@ -42,6 +42,8 @@ enum Commands {
         /// Path to the Judas source file (.jd)
         file: PathBuf,
     },
+    /// Start the Language Server Protocol (LSP) server over stdio
+    Lsp,
 }
 
 fn check_file(file_path: &Path) -> Result<judas_infer::TypedSourceFile, ExitCode> {
@@ -78,10 +80,16 @@ fn check_file(file_path: &Path) -> Result<judas_infer::TypedSourceFile, ExitCode
     Ok(typed_ast)
 }
 
-fn main() -> ExitCode {
+#[tokio::main]
+async fn main() -> ExitCode {
     let cli = Cli::parse();
 
     match cli.command {
+        Some(Commands::Lsp) => {
+            judas_lsp::run_server().await;
+            ExitCode::SUCCESS
+        }
+
         Some(Commands::Check { file }) => match check_file(&file) {
             Ok(tast) => {
                 println!(
