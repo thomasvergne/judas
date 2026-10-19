@@ -1,0 +1,14 @@
+# Auto detect text files and perform LF normalization
+* text=auto eol=lf
+
+# Judas HDL source files
+*.jd text eol=lf diff=rust linguist-language=Rust
+
+# Rust source files
+*.rs text eol=lf diff=rust
+
+# Configuration and documentation
+*.toml text eol=lf
+*.md text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
