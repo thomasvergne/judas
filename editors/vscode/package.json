@@ -1,0 +1,55 @@
+{
+  "name": "judas-hdl",
+  "displayName": "Judas HDL",
+  "description": "Rich language support for Judas Hardware Description Language (HDL)",
+  "version": "0.1.0",
+  "publisher": "judas-lang",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Linters",
+    "Snippets"
+  ],
+  "main": "./client.js",
+  "activationEvents": [
+    "onLanguage:judas"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "judas",
+        "aliases": ["Judas", "judas"],
+        "extensions": [".jd"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "judas",
+        "scopeName": "source.judas",
+        "path": "./syntaxes/judas.tmLanguage.json"
+      }
+    ],
+    "configuration": {
+      "title": "Judas HDL",
+      "properties": {
+        "judas.lsp.path": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the judas-lsp binary or judas executable. If empty, searches for 'judas-lsp' or 'judas' on PATH."
+        },
+        "judas.trace.server": {
+          "type": "string",
+          "enum": ["off", "messages", "verbose"],
+          "default": "off",
+          "description": "Traces the communication between VS Code and the Judas language server."
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  }
+}

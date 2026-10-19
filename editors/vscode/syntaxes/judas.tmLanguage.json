@@ -1,0 +1,145 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Judas",
+  "scopeName": "source.judas",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#strings" },
+    { "include": "#numbers" },
+    { "include": "#keywords" },
+    { "include": "#types" },
+    { "include": "#functions" },
+    { "include": "#operators" },
+    { "include": "#identifiers" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.double-slash.judas",
+          "match": "//.*$"
+        },
+        {
+          "name": "comment.block.judas",
+          "begin": "/\\*",
+          "end": "\\*/"
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.judas",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.judas",
+              "match": "\\\\."
+            }
+          ]
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.hex.judas",
+          "match": "\\b0x[0-9a-fA-F_]+\\b"
+        },
+        {
+          "name": "constant.numeric.binary.judas",
+          "match": "\\b0b[01_]+\\b"
+        },
+        {
+          "name": "constant.numeric.octal.judas",
+          "match": "\\b0o[0-7_]+\\b"
+        },
+        {
+          "name": "constant.numeric.decimal.judas",
+          "match": "\\b[0-9][0-9_]*\\b"
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.judas",
+          "match": "\\b(if|else|match|on|assert)\\b"
+        },
+        {
+          "name": "keyword.declaration.module.judas",
+          "match": "\\b(module|extern|namespace|import|as|pub|interface|struct|enum)\\b"
+        },
+        {
+          "name": "keyword.declaration.port.judas",
+          "match": "\\b(input|output|inout|master|slave)\\b"
+        },
+        {
+          "name": "keyword.declaration.signal.judas",
+          "match": "\\b(register|wire|let|connect)\\b"
+        },
+        {
+          "name": "keyword.other.trigger.judas",
+          "match": "\\b(rising|falling)\\b"
+        },
+        {
+          "name": "constant.language.boolean.judas",
+          "match": "\\b(true|false)\\b"
+        }
+      ]
+    },
+    "types": {
+      "patterns": [
+        {
+          "name": "entity.name.type.primitive.judas",
+          "match": "\\b(UInt|Int|Bits|Bit|Bool|Clock|Reset|Array|usize)\\b"
+        },
+        {
+          "name": "entity.name.type.custom.judas",
+          "match": "\\b[A-Z][a-zA-Z0-9_]*\\b"
+        }
+      ]
+    },
+    "functions": {
+      "patterns": [
+        {
+          "name": "support.function.builtin.judas",
+          "match": "\\b(extend|truncate|concat|repeat|slice)\\b"
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.assignment.judas",
+          "match": "(=>|->|=)"
+        },
+        {
+          "name": "keyword.operator.comparison.judas",
+          "match": "(==|!=|<=|>=|<|>)"
+        },
+        {
+          "name": "keyword.operator.arithmetic.judas",
+          "match": "(\\+|-|\\*|/|%)"
+        },
+        {
+          "name": "keyword.operator.bitwise.judas",
+          "match": "(&|\\||\\^|~|<<|>>)"
+        },
+        {
+          "name": "punctuation.separator.namespace.judas",
+          "match": "::"
+        }
+      ]
+    },
+    "identifiers": {
+      "patterns": [
+        {
+          "name": "variable.other.judas",
+          "match": "\\b[a-z_][a-zA-Z0-9_]*\\b"
+        }
+      ]
+    }
+  }
+}
