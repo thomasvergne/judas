@@ -23,6 +23,10 @@ pub enum TokenKind {
     Interface,
     Master,
     Slave,
+    Namespace,
+    Import,
+    Pub,
+    As,
 
     // Literals
     Ident(String),
@@ -31,17 +35,18 @@ pub enum TokenKind {
     StringLiteral(String),
 
     // Delimiters
-    LParen,    // (
-    RParen,    // )
-    LBrace,    // {
-    RBrace,    // }
-    LBracket,  // [
-    RBracket,  // ]
-    Comma,     // ,
-    Colon,     // :
-    Semicolon, // ;
-    Dot,       // .
-    FatArrow,  // =>
+    LParen,     // (
+    RParen,     // )
+    LBrace,     // {
+    RBrace,     // }
+    LBracket,   // [
+    RBracket,   // ]
+    Comma,      // ,
+    Colon,      // :
+    ColonColon, // ::
+    Semicolon,  // ;
+    Dot,        // .
+    FatArrow,   // =>
 
     // Operators
     Eq,       // =
@@ -91,6 +96,10 @@ impl fmt::Display for TokenKind {
             TokenKind::Interface => write!(f, "interface"),
             TokenKind::Master => write!(f, "master"),
             TokenKind::Slave => write!(f, "slave"),
+            TokenKind::Namespace => write!(f, "namespace"),
+            TokenKind::Import => write!(f, "import"),
+            TokenKind::Pub => write!(f, "pub"),
+            TokenKind::As => write!(f, "as"),
             TokenKind::Ident(s) => write!(f, "identifier `{}`", s),
             TokenKind::IntLiteral(n) => write!(f, "integer `{}`", n),
             TokenKind::BoolLiteral(b) => write!(f, "boolean `{}`", b),
@@ -103,6 +112,7 @@ impl fmt::Display for TokenKind {
             TokenKind::RBracket => write!(f, "`]`"),
             TokenKind::Comma => write!(f, "`,`"),
             TokenKind::Colon => write!(f, "`:`"),
+            TokenKind::ColonColon => write!(f, "`::`"),
             TokenKind::Semicolon => write!(f, "`;`"),
             TokenKind::Dot => write!(f, "`.`"),
             TokenKind::FatArrow => write!(f, "`=>`"),

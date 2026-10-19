@@ -2,6 +2,7 @@ use crate::error::ParseError;
 use crate::parser::Parser;
 use crate::token::TokenKind;
 use judas_ast::expr::{BinaryOp, CallArg, Expr, ExprKind, FieldInit, Literal, UnaryOp};
+use judas_ast::path::Path;
 
 impl Parser {
     /// Parses an expression with operator precedence climbing.
@@ -303,12 +304,26 @@ impl Parser {
                 Ok(Expr::new(ExprKind::Literal(Literal::String(val)), span))
             }
             TokenKind::Ident(_) => {
-                if self.peek_ahead(1) == &TokenKind::LBrace
-                    && (self.peek_ahead(2) == &TokenKind::RBrace
-                        || (matches!(self.peek_ahead(2), TokenKind::Ident(_))
-                            && self.peek_ahead(3) == &TokenKind::Colon))
+                let first_ident = self.expect_ident()?;
+                let (path, is_qualified) = if self.check(&TokenKind::ColonColon) {
+                    let mut segments = vec![first_ident.clone()];
+                    let mut end_span = first_ident.span;
+                    while self.match_token(&TokenKind::ColonColon) {
+                        let seg = self.expect_ident()?;
+                        end_span = seg.span;
+                        segments.push(seg);
+                    }
+                    (Path::new(segments, first_ident.span.merge(end_span)), true)
+                } else {
+                    (Path::from_ident(first_ident.clone()), false)
+                };
+
+                // Check if this is a struct initialization: `Path { field: val, ... }`
+                if self.check(&TokenKind::LBrace)
+                    && (self.peek_ahead(1) == &TokenKind::RBrace
+                        || (matches!(self.peek_ahead(1), TokenKind::Ident(_))
+                            && self.peek_ahead(2) == &TokenKind::Colon))
                 {
-                    let ident = self.expect_ident()?;
                     self.expect(&TokenKind::LBrace)?;
                     let mut fields = Vec::new();
                     while !self.check(&TokenKind::RBrace) && !self.is_at_end() {
@@ -327,18 +342,20 @@ impl Parser {
                         }
                     }
                     let end_tok = self.expect(&TokenKind::RBrace)?;
-                    let full_span = ident.span.merge(end_tok.span);
+                    let full_span = path.span.merge(end_tok.span);
                     Ok(Expr::new(
                         ExprKind::StructInit {
-                            name: ident,
+                            path,
                             fields,
                         },
                         full_span,
                     ))
+                } else if is_qualified {
+                    let span = path.span;
+                    Ok(Expr::new(ExprKind::Path(path), span))
                 } else {
-                    let ident = self.expect_ident()?;
-                    let span = ident.span;
-                    Ok(Expr::new(ExprKind::Ident(ident), span))
+                    let span = first_ident.span;
+                    Ok(Expr::new(ExprKind::Ident(first_ident), span))
                 }
             }
             TokenKind::LParen => {

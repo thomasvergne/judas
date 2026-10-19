@@ -102,3 +102,32 @@ extern module SimplePll {
     assert_eq!(m2.items.len(), 2);
 }
 
+#[test]
+fn test_namespace_and_import_parsing() {
+    let src = r#"
+namespace math {
+    pub struct Vector {
+        x: uint<16>,
+        y: uint<16>,
+    }
+
+    pub module Adder {
+        input a: uint<16>
+        input b: uint<16>
+        output sum: uint<16>
+        sum = a + b;
+    }
+
+    module Internal {}
+}
+
+import math::Vector;
+import math::{Adder, Internal as MathInternal};
+import math::*;
+import "vendor/other.jd" as other;
+"#;
+
+    let sf = parse_source(src).expect("Failed to parse namespaces and imports");
+    assert_eq!(sf.items.len(), 5);
+}
+

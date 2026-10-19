@@ -3,13 +3,30 @@ use crate::parser::Parser;
 use crate::token::TokenKind;
 use judas_ast::item::{
     AssertDecl, ConnectionDecl, EnumDecl, EnumVariant, GenericParam, GenericParamKind,
-    InterfaceDecl, InterfacePortDecl, InterfaceRole, InterfaceSignal, InterfaceSignalDir, Item,
-    ItemKind, LetDecl, ModuleDecl, ModuleItem, ModuleItemKind, ModuleParam, OnBlock, PortDecl,
-    PortDirection, RegisterDecl, SourceFile, StructDecl, StructField,
+    ImportDecl, ImportItem, ImportKind, ImportSource, InterfaceDecl, InterfacePortDecl,
+    InterfaceRole, InterfaceSignal, InterfaceSignalDir, Item, ItemKind, LetDecl, ModuleDecl,
+    ModuleItem, ModuleItemKind, ModuleParam, NamespaceDecl, OnBlock, PortDecl, PortDirection,
+    RegisterDecl, SourceFile, StructDecl, StructField,
 };
+use judas_ast::path::{Path, Visibility};
 use judas_ast::stmt::{EdgeKind, Trigger};
 
 impl Parser {
+    /// Parses a qualified path (e.g. `foo`, `math::Adder`, `a::b::c`).
+    pub fn parse_path(&mut self) -> Result<Path, ParseError> {
+        let first = self.expect_ident()?;
+        let mut segments = vec![first.clone()];
+        let mut end_span = first.span;
+        while self.check(&TokenKind::ColonColon) && matches!(self.peek_ahead(1), TokenKind::Ident(_)) {
+            self.advance(); // consume ::
+            let seg = self.expect_ident()?;
+            end_span = seg.span;
+            segments.push(seg);
+        }
+        let span = first.span.merge(end_span);
+        Ok(Path::new(segments, span))
+    }
+
     /// Parses an entire source file consisting of module,
     /// enum, struct, and interface items.
     pub fn parse_source_file(&mut self) -> Result<SourceFile, ParseError> {
@@ -29,28 +46,43 @@ impl Parser {
         })
     }
 
-    /// Parses a top-level item (`module`, `enum`, `struct`, or `interface`).
+    /// Parses a top-level item (`module`, `enum`, `struct`, `interface`, `namespace`, `import`, or `export`).
     pub fn parse_item(&mut self) -> Result<Item, ParseError> {
+        let is_pub = self.match_token(&TokenKind::Pub);
+        let visibility = if is_pub {
+            Visibility::Public
+        } else {
+            Visibility::Private
+        };
+
         match self.peek() {
-            TokenKind::Extern | TokenKind::Module => self.parse_module_decl().map(|m| {
+            TokenKind::Namespace => self.parse_namespace_decl(visibility).map(|ns| {
+                let span = ns.span;
+                Item::new(ItemKind::Namespace(ns), span)
+            }),
+            TokenKind::Import => self.parse_import_decl(is_pub).map(|imp| {
+                let span = imp.span;
+                Item::new(ItemKind::Import(imp), span)
+            }),
+            TokenKind::Extern | TokenKind::Module => self.parse_module_decl(visibility).map(|m| {
                 let span = m.span;
                 Item::new(ItemKind::Module(m), span)
             }),
-            TokenKind::Enum => self.parse_enum_decl().map(|e| {
+            TokenKind::Enum => self.parse_enum_decl(visibility).map(|e| {
                 let span = e.span;
                 Item::new(ItemKind::Enum(e), span)
             }),
-            TokenKind::Struct => self.parse_struct_decl().map(|s| {
+            TokenKind::Struct => self.parse_struct_decl(visibility).map(|s| {
                 let span = s.span;
                 Item::new(ItemKind::Struct(s), span)
             }),
-            TokenKind::Interface => self.parse_interface_decl().map(|i| {
+            TokenKind::Interface => self.parse_interface_decl(visibility).map(|i| {
                 let span = i.span;
                 Item::new(ItemKind::Interface(i), span)
             }),
             other => Err(ParseError::new(
                 format!(
-                    "Expected `module`, `extern module`, `enum`, `struct`, or `interface`, found {}",
+                    "Expected `module`, `extern module`, `enum`, `struct`, `interface`, `namespace`, `import`, or `export`, found {}",
                     other
                 ),
                 self.current_span(),
@@ -73,7 +105,7 @@ impl Parser {
     ///     y: UInt<8>,
     /// }
     /// ```
-    pub fn parse_struct_decl(&mut self) -> Result<StructDecl, ParseError> {
+    pub fn parse_struct_decl(&mut self, visibility: Visibility) -> Result<StructDecl, ParseError> {
         let start_tok = self.expect(&TokenKind::Struct)?;
         let name = self.expect_ident()?;
         self.expect(&TokenKind::LBrace)?;
@@ -100,6 +132,7 @@ impl Parser {
         Ok(StructDecl {
             name,
             fields,
+            visibility,
             span: start_tok.span.merge(end_tok.span),
         })
     }
@@ -119,7 +152,7 @@ impl Parser {
     ///     out field2: Output,
     /// }
     /// ```
-    pub fn parse_interface_decl(&mut self) -> Result<InterfaceDecl, ParseError> {
+    pub fn parse_interface_decl(&mut self, visibility: Visibility) -> Result<InterfaceDecl, ParseError> {
         let start_tok = self.expect(&TokenKind::Interface)?;
         let name = self.expect_ident()?;
         self.expect(&TokenKind::LBrace)?;
@@ -174,6 +207,7 @@ impl Parser {
         Ok(InterfaceDecl {
             name,
             signals,
+            visibility,
             span: start_tok.span.merge(end_tok.span),
         })
     }
@@ -194,7 +228,7 @@ impl Parser {
     ///     Variant3
     /// }
     /// ```
-    pub fn parse_enum_decl(&mut self) -> Result<EnumDecl, ParseError> {
+    pub fn parse_enum_decl(&mut self, visibility: Visibility) -> Result<EnumDecl, ParseError> {
         let start_tok = self.expect(&TokenKind::Enum)?;
         let name = self.expect_ident()?;
         self.expect(&TokenKind::LBrace)?;
@@ -224,6 +258,7 @@ impl Parser {
         Ok(EnumDecl {
             name,
             variants,
+            visibility,
             span: start_tok.span.merge(end_tok.span),
         })
     }
@@ -246,7 +281,7 @@ impl Parser {
     ///     on rising(clk) { ... }
     /// }
     /// ```
-    pub fn parse_module_decl(&mut self) -> Result<ModuleDecl, ParseError> {
+    pub fn parse_module_decl(&mut self, visibility: Visibility) -> Result<ModuleDecl, ParseError> {
         let (is_extern, foreign_path, start_span) = if self.check(&TokenKind::Extern) {
             let extern_tok = self.advance();
             let mut path = None;
@@ -255,11 +290,11 @@ impl Parser {
                 self.advance();
             }
             self.expect(&TokenKind::Module)?;
-            if path.is_none() {
-                if let TokenKind::StringLiteral(s) = self.peek() {
-                    path = Some(s.clone());
-                    self.advance();
-                }
+            if path.is_none()
+                && let TokenKind::StringLiteral(s) = self.peek()
+            {
+                path = Some(s.clone());
+                self.advance();
             }
             (true, path, extern_tok.span)
         } else {
@@ -302,6 +337,7 @@ impl Parser {
             items,
             is_extern,
             foreign_path,
+            visibility,
             span: start_span.merge(end_tok.span),
         })
     }
@@ -448,7 +484,7 @@ impl Parser {
         let start_tok = self.advance(); // master or slave
         let name = self.expect_ident()?;
         self.expect(&TokenKind::Colon)?;
-        let interface_name = self.expect_ident()?;
+        let interface_name = self.parse_path()?;
         let span = start_tok.span.merge(interface_name.span);
         Ok(ModuleItem::new(
             ModuleItemKind::InterfacePort(InterfacePortDecl {
@@ -755,5 +791,100 @@ impl Parser {
 
         let span = start_span.merge(end_tok.span);
         Ok(Trigger { edge, signal, span })
+    }
+
+    /// Parses a namespace declaration.
+    pub fn parse_namespace_decl(
+        &mut self,
+        visibility: Visibility,
+    ) -> Result<NamespaceDecl, ParseError> {
+        let start_tok = self.expect(&TokenKind::Namespace)?;
+        let name = self.expect_ident()?;
+        self.expect(&TokenKind::LBrace)?;
+
+        let mut items = Vec::new();
+        self.skip_semicolons();
+        while !self.check(&TokenKind::RBrace) && !self.is_at_end() {
+            items.push(self.parse_item()?);
+            self.skip_semicolons();
+        }
+
+        let end_tok = self.expect(&TokenKind::RBrace)?;
+        Ok(NamespaceDecl {
+            name,
+            items,
+            visibility,
+            span: start_tok.span.merge(end_tok.span),
+        })
+    }
+
+    /// Parses an import declaration.
+    pub fn parse_import_decl(&mut self, is_pub: bool) -> Result<ImportDecl, ParseError> {
+        let start_tok = self.expect(&TokenKind::Import)?;
+
+        let (source, _base_span) = if let TokenKind::StringLiteral(path_str) = self.peek() {
+            let s = path_str.clone();
+            let tok = self.advance();
+            (ImportSource::File(s), tok.span)
+        } else {
+            let path = self.parse_path()?;
+            let span = path.span;
+            (ImportSource::Namespace(path), span)
+        };
+
+        let kind = if self.match_token(&TokenKind::ColonColon) {
+            if self.match_token(&TokenKind::Star) {
+                ImportKind::Wildcard
+            } else if self.match_token(&TokenKind::LBrace) {
+                let mut items = Vec::new();
+                while !self.check(&TokenKind::RBrace) && !self.is_at_end() {
+                    let name = self.expect_ident()?;
+                    let alias = if self.match_token(&TokenKind::As) {
+                        Some(self.expect_ident()?)
+                    } else {
+                        None
+                    };
+                    let span = if let Some(ref a) = alias {
+                        name.span.merge(a.span)
+                    } else {
+                        name.span
+                    };
+                    items.push(ImportItem { name, alias, span });
+                    if !self.match_token(&TokenKind::Comma) {
+                        break;
+                    }
+                }
+                self.expect(&TokenKind::RBrace)?;
+                ImportKind::Multiple(items)
+            } else {
+                let name = self.expect_ident()?;
+                let alias = if self.match_token(&TokenKind::As) {
+                    Some(self.expect_ident()?)
+                } else {
+                    None
+                };
+                ImportKind::Item { name, alias }
+            }
+        } else if self.match_token(&TokenKind::As) {
+            let alias = self.expect_ident()?;
+            ImportKind::ModuleAlias(alias)
+        } else {
+            match &source {
+                ImportSource::Namespace(p) => {
+                    let name = p.last_ident().clone();
+                    ImportKind::Item { name, alias: None }
+                }
+                ImportSource::File(_) => ImportKind::Wildcard,
+            }
+        };
+
+        self.match_token(&TokenKind::Semicolon);
+        let end_span = self.current_span();
+        Ok(ImportDecl {
+            source,
+            kind,
+            is_pub,
+            span: start_tok.span.merge(end_span),
+        })
     }
 }

@@ -1,6 +1,7 @@
 use crate::error::ParseError;
 use crate::parser::Parser;
 use crate::token::TokenKind;
+use judas_ast::path::Path;
 use judas_ast::types::{Type, TypeArg, TypeKind};
 
 impl Parser {
@@ -51,7 +52,21 @@ impl Parser {
                 ))
             }
             _ => {
-                // User-defined / Generic type: Name or Name<Arg1, Arg2>
+                // User-defined / Generic type: Name or Path or Name<Arg1, Arg2>
+                let path = if self.check(&TokenKind::ColonColon) {
+                    let mut segments = vec![ident];
+                    let mut end_span = start_span;
+                    while self.match_token(&TokenKind::ColonColon) {
+                        let seg = self.expect_ident()?;
+                        end_span = seg.span;
+                        segments.push(seg);
+                    }
+                    Path::new(segments, start_span.merge(end_span))
+                } else {
+                    Path::from_ident(ident)
+                };
+
+                let path_span = path.span;
                 if self.check(&TokenKind::Lt) {
                     self.advance();
                     let mut args = Vec::new();
@@ -63,15 +78,14 @@ impl Parser {
                     }
                     let end_tok = self.expect(&TokenKind::Gt)?;
                     let span = start_span.merge(end_tok.span);
-                    Ok(Type::new(TypeKind::Named { name: ident, args }, span))
+                    Ok(Type::new(TypeKind::Named { path, args }, span))
                 } else {
-                    let span = ident.span;
                     Ok(Type::new(
                         TypeKind::Named {
-                            name: ident,
+                            path,
                             args: Vec::new(),
                         },
-                        span,
+                        path_span,
                     ))
                 }
             }
@@ -124,7 +138,7 @@ impl Parser {
                     let end_tok = self.expect(&TokenKind::Gt)?;
                     let span = ident.span.merge(end_tok.span);
                     Ok(TypeArg::Type(Type::new(
-                        TypeKind::Named { name: ident, args },
+                        TypeKind::Named { path: Path::from_ident(ident), args },
                         span,
                     )))
                 } else {

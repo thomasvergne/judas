@@ -31,5 +31,5 @@ pub fn parse_module(input: &str) -> Result<ModuleDecl, ParseError> {
     let mut lexer = Lexer::new(input);
     let tokens = lexer.tokenize()?;
     let mut parser = Parser::new(tokens);
-    parser.parse_module_decl()
+    parser.parse_module_decl(judas_ast::path::Visibility::Public)
 }

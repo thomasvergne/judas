@@ -179,7 +179,12 @@ impl<'a> Lexer<'a> {
                 }
                 ':' => {
                     self.advance();
-                    TokenKind::Colon
+                    if self.peek_char() == Some(':') {
+                        self.advance();
+                        TokenKind::ColonColon
+                    } else {
+                        TokenKind::Colon
+                    }
                 }
                 ';' => {
                     self.advance();
@@ -431,6 +436,10 @@ impl<'a> Lexer<'a> {
                         "interface" => TokenKind::Interface,
                         "master" => TokenKind::Master,
                         "slave" => TokenKind::Slave,
+                        "namespace" => TokenKind::Namespace,
+                        "import" => TokenKind::Import,
+                        "pub" => TokenKind::Pub,
+                        "as" => TokenKind::As,
                         "true" => TokenKind::BoolLiteral(true),
                         "false" => TokenKind::BoolLiteral(false),
                         _ => TokenKind::Ident(ident),
