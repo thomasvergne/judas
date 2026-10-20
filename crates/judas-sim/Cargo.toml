@@ -1,0 +1,12 @@
+[package]
+name = "judas-sim"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+judas-ast = { workspace = true }
+judas-infer = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+judas-parser = { workspace = true }

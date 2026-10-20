@@ -11,3 +11,29 @@ module CarryAdder(N: usize) {
     sum = truncate<N>(total)
     cout = truncate<1>(total >> N)
 }
+
+module Top {
+    input clk: Clock
+    input a: UInt<4>
+    input b: UInt<4>
+    input rst: Bit
+
+    output sum: UInt<4>
+    output carry_out: Bit
+    
+    let adder = CarryAdder(N: 4)
+
+    connect adder.a = a
+    connect adder.b = b
+    connect adder.cin = false
+    
+    on rising(clk) {
+        if rst {
+            sum = 0
+            carry_out = false
+        } else {
+            sum = adder.sum
+            carry_out = adder.cout
+        }
+    }
+}

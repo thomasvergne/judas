@@ -889,6 +889,16 @@ pub(crate) fn infer_expr(ctx: &mut InferContext, expr: &Expr) -> Result<TypedExp
                     }
                     ctx.current_constants = old_consts;
 
+                    for arg in &mut typed_args {
+                        if let Some(arg_name) = &arg.name
+                            && !sig.params.contains_key(&arg_name.name)
+                            && let Some((_dir, port_ty)) = inst_ports.get(&arg_name.name)
+                        {
+                            let unified = ctx.unify(port_ty, &arg.value.ty, arg.value.span)?;
+                            arg.value.ty = unified;
+                        }
+                    }
+
                     let inst_ty = ResolvedType::ModuleInstance {
                         module_name: resolved_name,
                         ports: inst_ports,
